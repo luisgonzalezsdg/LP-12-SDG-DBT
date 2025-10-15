@@ -1,0 +1,35 @@
+name: 'LP12'
+version: '1.0.0'
+config-version: 2
+
+profile: 'default'
+model-paths: ["models"]
+# ...otros paths...
+vars:
+  metricflow_time_spine_model: "dim_dates"
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+seeds:
+  LP12:  # Reemplaza con el nombre de tu proyecto
+    +grants:
+      select: ['DT_SL_ADMIN', 'DT_ADMIN']
+      insert: ['DT_SL_ADMIN', 'DT_ADMIN']
+      update: ['DT_SL_ADMIN', 'DT_ADMIN']
+
+
+models:
+  LP12:
+    +quoting:
+      database: false
+      schema: false
+      identifier: true
+
+
+    facts:
+      +materialized: table
+    dimensions:
+      +materialized: table
+    

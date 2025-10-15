@@ -1,0 +1,904 @@
+version: 2
+
+semantic_models:
+
+  # =========================
+  # Dimensiones (nombres alineados)
+  # =========================
+  - name: sm_calendar
+    description: "Calendar dimension with multiple time breakdowns."
+    model: ref('dim_calendar')
+    entities: 
+      - name: calendar
+        type: primary
+        expr: period    
+
+    dimensions:
+      # Base date
+      - name: period
+        type: time
+        expr: PERIOD
+        type_params:
+          time_granularity: day
+
+      # Year
+      - name: period_year
+        type: categorical
+        expr: EXTRACT(YEAR FROM PERIOD)
+
+
+      # Month number (1–12)
+      - name: month_no
+        type: categorical
+        expr: EXTRACT(MONTH FROM PERIOD)
+ 
+
+      # Month name (Jan, Feb…)
+      - name: month_name
+        type: categorical
+        expr: TO_CHAR(PERIOD, 'Mon')
+
+
+      # Quarter (Q1, Q2…)
+      - name: period_quarter
+        type: categorical
+        expr: CONCAT('Q', TO_CHAR(EXTRACT(QUARTER FROM PERIOD)))
+
+
+
+      # YearMonth (YYYY-MM)
+      - name: year_month
+        type: categorical
+        expr: TO_CHAR(PERIOD, 'YYYY-MM')
+
+
+      # Week number in year
+      - name: week_no
+        type: categorical
+        expr: EXTRACT(WEEK FROM PERIOD)
+
+
+      # Week label (W01, W02…)
+      - name: week_label
+        type: categorical
+        expr: CONCAT('W', LPAD(TO_CHAR(EXTRACT(WEEK FROM PERIOD)), 2, '0'))
+
+
+      # Weekday number (1=Mon)
+      - name: weekday_no
+        type: categorical
+        expr: EXTRACT(DAYOFWEEK FROM PERIOD)
+
+
+      # Weekday name (Mon, Tue…)
+      - name: weekday
+        type: categorical
+        expr: TO_CHAR(PERIOD, 'Dy')
+
+
+
+
+  - name: sm_location
+    description: "Location dimension containing countries and regions."
+    model: ref('dim_location')
+    entities:
+      - name: country
+        type: primary
+        expr: COUNTRY
+    dimensions:
+      - name: region
+        type: categorical
+        expr: REGION
+        description: "Categorical dimension that groups countries into broader geographic regions for aggregated analysis."
+
+
+  - name: sm_category
+    description: "Dimension for product categories."
+    model: ref('dim_category')
+    entities:
+      - name: category
+        type: primary
+        expr: CATEGORY
+    dimensions:
+      - name: category_name
+        description: "Name of the product category"
+        type: categorical
+        expr: CATEGORY
+
+  - name: sm_corporation
+    description: "Corporation or manufacturer dimension."
+    model: ref('dim_corporation')
+    entities:
+      - name: corporation
+        type: primary
+        expr: CORPORATION
+
+
+  # =========================
+  # Hechos (FACT_SALES)
+  # =========================
+  - name: fact
+    description: "Base model for sales. Defines fundamental aggregations (measures)."
+    model: ref('fact_sales')
+
+    # En dbt SL los joins se resuelven por entidades/keys lógicos.
+    entities:
+      - name: fact_item
+        type: primary
+      - name: country
+        type: foreign
+        expr: COUNTRY
+      - name: category
+        type: foreign
+        expr: CATEGORY
+      - name: corporation
+        type: foreign
+        expr: CORPORATION
+      - name: calendar
+        type: foreign
+        expr: period
+
+
+    # La dimensión temporal por defecto (equivalente a DIM_CALENDAR.PERIOD)
+    defaults:
+      agg_time_dimension: period
+
+    dimensions:
+      - name: period
+        type: time
+        expr: PERIOD
+        type_params:
+          time_granularity: day
+
+    # ===== FACTS (columnas numéricas a nivel de fila) =====
+    measures:
+      # LM
+      - name: ty_sales_lm
+        agg: sum
+        expr: TY_SALES_LM
+      - name: ly_sales_lm
+        agg: sum
+        expr: LY_SALES_LM
+      - name: ty_volume_lm
+        agg: sum
+        expr: TY_VOLUME_LM
+      - name: ly_volume_lm
+        agg: sum
+        expr: LY_VOLUME_LM
+
+      # L3M
+      - name: ty_sales_l3m
+        agg: sum
+        expr: TY_SALES_L3M
+      - name: ly_sales_l3m
+        agg: sum
+        expr: LY_SALES_L3M
+      - name: ty_volume_l3m
+        agg: sum
+        expr: TY_VOLUME_L3M
+      - name: ly_volume_l3m
+        agg: sum
+        expr: LY_VOLUME_L3M
+
+      # YTD
+      - name: ty_sales_ytd
+        agg: sum
+        expr: TY_SALES_YTD
+      - name: ly_sales_ytd
+        agg: sum
+        expr: LY_SALES_YTD
+      - name: ty_volume_ytd
+        agg: sum
+        expr: TY_VOLUME_YTD
+      - name: ly_volume_ytd
+        agg: sum
+        expr: LY_VOLUME_YTD
+
+      # MAT
+      - name: ty_sales_mat
+        agg: sum
+        expr: TY_SALES_MAT
+      - name: ly_sales_mat
+        agg: sum
+        expr: LY_SALES_MAT
+      - name: ty_volume_mat
+        agg: sum
+        expr: TY_VOLUME_MAT
+      - name: ly_volume_mat
+        agg: sum
+        expr: LY_VOLUME_MAT
+
+
+# ======================================================
+# MÉTRICAS (nombres 1:1 con Snowflake)
+# ======================================================
+metrics:
+
+  # =========================
+  # MÉTRICAS BASE (SUMAS)
+  # =========================
+  - name: sum_ty_sales_lm
+    label: "sum_ty_sales_lm"
+    description: "Sums the sales for the last month of the current year."
+    type: simple
+    type_params: { measure: ty_sales_lm }
+
+  - name: sum_ly_sales_lm
+    label: "sum_ly_sales_lm"
+    description: "Calculates the total sales for the last month of the previous year."
+    type: simple
+    type_params: { measure: ly_sales_lm }
+
+  - name: sum_ty_volume_lm
+    label: "sum_ty_volume_lm"
+    description: "Sums the volume for the last month of the current year."
+    type: simple
+    type_params: { measure: ty_volume_lm }
+
+  - name: sum_ly_volume_lm
+    label: "sum_ly_volume_lm"
+    description: "Calculates the total volume for the last month of the previous year."
+    type: simple
+    type_params: { measure: ly_volume_lm }
+
+  - name: sum_ty_sales_l3m
+    label: "sum_ty_sales_l3m"
+    description: "Sums the total sales for the last 3 months in the current year."
+    type: simple
+    type_params: { measure: ty_sales_l3m }
+
+  - name: sum_ly_sales_l3m
+    label: "sum_ly_sales_l3m"
+    description: "Calculates the total sales for the last three months of the previous year."
+    type: simple
+    type_params: { measure: ly_sales_l3m }
+
+  - name: sum_ty_volume_l3m
+    label: "sum_ty_volume_l3m"
+    description: "Sums the total volume for the last 3 months in the current year."
+    type: simple
+    type_params: { measure: ty_volume_l3m }
+
+  - name: sum_ly_volume_l3m
+    label: "sum_ly_volume_l3m"
+    description: "Calculates the total volume for the last three months of the previous year."
+    type: simple
+    type_params: { measure: ly_volume_l3m }
+
+  - name: sum_ty_sales_ytd
+    label: "sum_ty_sales_ytd"
+    description: "Calculates the total sales year to date for the current year."
+    type: simple
+    type_params: { measure: ty_sales_ytd }
+
+  - name: sum_ly_sales_ytd
+    label: "sum_ly_sales_ytd"
+    description: "Calculates the year-to-date sales for the last year."
+    type: simple
+    type_params: { measure: ly_sales_ytd }
+
+  - name: sum_ty_volume_ytd
+    label: "sum_ty_volume_ytd"
+    description: "Calculates the total volume year to date for the current year."
+    type: simple
+    type_params: { measure: ty_volume_ytd }
+
+  - name: sum_ly_volume_ytd
+    label: "sum_ly_volume_ytd"
+    description: "Calculates the year-to-date volume for the last year."
+    type: simple
+    type_params: { measure: ly_volume_ytd }
+
+  - name: sum_ty_sales_mat
+    label: "sum_ty_sales_mat"
+    description: "Sums the current year sales for the moving annual total (MAT)."
+    type: simple
+    type_params: { measure: ty_sales_mat }
+
+  - name: sum_ly_sales_mat
+    label: "sum_ly_sales_mat"
+    description: "Sums the sales amount for the last year moving annual total."
+    type: simple
+    type_params: { measure: ly_sales_mat }
+
+  - name: sum_ty_volume_mat
+    label: "sum_ty_volume_mat"
+    description: "Sums the current year's volume for the moving annual total."
+    type: simple
+    type_params: { measure: ty_volume_mat }
+
+  - name: sum_ly_volume_mat
+    label: "sum_ly_volume_mat"
+    description: "Sums the volume amount for the last year moving annual total."
+    type: simple
+    type_params: { measure: ly_volume_mat }
+
+
+  # ======================================================
+  # MARKET (LM / L3M / YTD / MAT)
+  # ======================================================
+  - name: market_sales_abs_growth_lm
+    label: "market_sales_abs_growth_lm"
+    description: "Absolute growth in market sales for the last month."
+    type: derived
+    type_params:
+      metrics: [sum_ty_sales_lm, sum_ly_sales_lm]
+      expr: sum_ty_sales_lm - sum_ly_sales_lm
+
+  - name: market_sales_growth_lm
+    label: "market_sales_growth_lm"
+    description: "Percentage growth in market sales for LM: (TY/LY) - 1."
+    type: derived
+    type_params:
+      metrics: [sum_ty_sales_lm, sum_ly_sales_lm]
+      expr: (sum_ty_sales_lm / NULLIF(sum_ly_sales_lm, 0)) - 1
+
+  - name: market_volume_abs_growth_lm
+    label: "market_volume_abs_growth_lm"
+    description: "Absolute growth in market volume for LM."
+    type: derived
+    type_params:
+      metrics: [sum_ty_volume_lm, sum_ly_volume_lm]
+      expr: sum_ty_volume_lm - sum_ly_volume_lm
+
+  - name: market_volume_growth_lm
+    label: "market_volume_growth_lm"
+    description: "Percentage growth in market volume for LM."
+    type: derived
+    type_params:
+      metrics: [sum_ty_volume_lm, sum_ly_volume_lm]
+      expr: (sum_ty_volume_lm / NULLIF(sum_ly_volume_lm, 0)) - 1
+
+  - name: market_sales_abs_growth_l3m
+    label: "market_sales_abs_growth_l3m"
+    description: "Absolute growth in market sales over L3M."
+    type: derived
+    type_params:
+      metrics: [sum_ty_sales_l3m, sum_ly_sales_l3m]
+      expr: sum_ty_sales_l3m - sum_ly_sales_l3m
+
+  - name: market_sales_growth_l3m
+    label: "market_sales_growth_l3m"
+    description: "Percentage growth in market sales over L3M."
+    type: derived
+    type_params:
+      metrics: [sum_ty_sales_l3m, sum_ly_sales_l3m]
+      expr: (sum_ty_sales_l3m / NULLIF(sum_ly_sales_l3m, 0)) - 1
+
+  - name: market_volume_abs_growth_l3m
+    label: "market_volume_abs_growth_l3m"
+    description: "Absolute growth in market volume over L3M."
+    type: derived
+    type_params:
+      metrics: [sum_ty_volume_l3m, sum_ly_volume_l3m]
+      expr: sum_ty_volume_l3m - sum_ly_volume_l3m
+
+  - name: market_volume_growth_l3m
+    label: "market_volume_growth_l3m"
+    description: "Percentage growth in market volume over L3M."
+    type: derived
+    type_params:
+      metrics: [sum_ty_volume_l3m, sum_ly_volume_l3m]
+      expr: (sum_ty_volume_l3m / NULLIF(sum_ly_volume_l3m, 0)) - 1
+
+  - name: market_sales_abs_growth_ytd
+    label: "market_sales_abs_growth_ytd"
+    description: "Absolute YTD sales growth."
+    type: derived
+    type_params:
+      metrics: [sum_ty_sales_ytd, sum_ly_sales_ytd]
+      expr: sum_ty_sales_ytd - sum_ly_sales_ytd
+
+  - name: market_sales_growth_ytd
+    label: "market_sales_growth_ytd"
+    description: "YTD market sales growth."
+    type: derived
+    type_params:
+      metrics: [sum_ty_sales_ytd, sum_ly_sales_ytd]
+      expr: (sum_ty_sales_ytd / NULLIF(sum_ly_sales_ytd, 0)) - 1
+
+  - name: market_volume_abs_growth_ytd
+    label: "market_volume_abs_growth_ytd"
+    description: "Absolute YTD volume growth."
+    type: derived
+    type_params:
+      metrics: [sum_ty_volume_ytd, sum_ly_volume_ytd]
+      expr: sum_ty_volume_ytd - sum_ly_volume_ytd
+
+  - name: market_volume_growth_ytd
+    label: "market_volume_growth_ytd"
+    description: "YTD market volume growth."
+    type: derived
+    type_params:
+      metrics: [sum_ty_volume_ytd, sum_ly_volume_ytd]
+      expr: (sum_ty_volume_ytd / NULLIF(sum_ly_volume_ytd, 0)) - 1
+
+  - name: market_sales_abs_growth_mat
+    label: "market_sales_abs_growth_mat"
+    description: "Absolute MAT sales growth."
+    type: derived
+    type_params:
+      metrics: [sum_ty_sales_mat, sum_ly_sales_mat]
+      expr: sum_ty_sales_mat - sum_ly_sales_mat
+
+  - name: market_sales_growth_mat
+    label: "market_sales_growth_mat"
+    description: "MAT market sales growth."
+    type: derived
+    type_params:
+      metrics: [sum_ty_sales_mat, sum_ly_sales_mat]
+      expr: (sum_ty_sales_mat / NULLIF(sum_ly_sales_mat, 0)) - 1
+
+  - name: market_volume_abs_growth_mat
+    label: "market_volume_abs_growth_mat"
+    description: "Absolute MAT volume growth."
+    type: derived
+    type_params:
+      metrics: [sum_ty_volume_mat, sum_ly_volume_mat]
+      expr: sum_ty_volume_mat - sum_ly_volume_mat
+
+  - name: market_volume_growth_mat
+    label: "market_volume_growth_mat"
+    description: "MAT market volume growth."
+    type: derived
+    type_params:
+      metrics: [sum_ty_volume_mat, sum_ly_volume_mat]
+      expr: (sum_ty_volume_mat / NULLIF(sum_ly_volume_mat, 0)) - 1
+
+
+  # ======================================================
+  # CORPORATE (FictionalMeds) — totales, crecimientos, shares y ratios
+  # ======================================================
+
+  # ---------- LM ----------
+  - name: corp_ty_sales_lm
+    label: "corp_ty_sales_lm"
+    description: "Current year's sales for LM for 'FictionalMeds'."
+    type: simple
+    type_params: { measure: ty_sales_lm }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+
+  - name: corp_ly_sales_lm
+    label: "corp_ly_sales_lm"
+    description: "Last year's sales for LM for 'FictionalMeds'."
+    type: simple
+    type_params: { measure: ly_sales_lm }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_sales_abs_growth_lm
+    label: "corp_sales_abs_growth_lm"
+    description: "Absolute corporate sales growth LM."
+    type: derived
+    type_params:
+      metrics: [corp_ty_sales_lm, corp_ly_sales_lm]
+      expr: corp_ty_sales_lm - corp_ly_sales_lm
+
+  - name: corp_sales_growth_lm
+    label: "corp_sales_growth_lm"
+    description: "Corporate sales growth LM."
+    type: derived
+    type_params:
+      metrics: [corp_ty_sales_lm, corp_ly_sales_lm]
+      expr: (corp_ty_sales_lm / NULLIF(corp_ly_sales_lm, 0)) - 1
+
+  - name: corp_vs_market_delta_sales_lm
+    label: "corp_vs_market_delta_sales_lm"
+    description: "Delta corp vs market sales growth LM."
+    type: derived
+    type_params:
+      metrics: [corp_sales_growth_lm, market_sales_growth_lm]
+      expr: corp_sales_growth_lm - market_sales_growth_lm
+
+  - name: corp_ty_volume_lm
+    label: "corp_ty_volume_lm"
+    description: "Current year's volume for LM for 'FictionalMeds'."
+    type: simple
+    type_params: { measure: ty_volume_lm }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_ly_volume_lm
+    label: "corp_ly_volume_lm"
+    description: "Last year's volume for LM for 'FictionalMeds'."
+    type: simple
+    type_params: { measure: ly_volume_lm }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_volume_abs_growth_lm
+    label: "corp_volume_abs_growth_lm"
+    description: "Absolute corporate volume growth LM."
+    type: derived
+    type_params:
+      metrics: [corp_ty_volume_lm, corp_ly_volume_lm]
+      expr: corp_ty_volume_lm - corp_ly_volume_lm
+
+  - name: corp_volume_growth_lm
+    label: "corp_volume_growth_lm"
+    description: "Corporate volume growth LM."
+    type: derived
+    type_params:
+      metrics: [corp_ty_volume_lm, corp_ly_volume_lm]
+      expr: (corp_ty_volume_lm / NULLIF(corp_ly_volume_lm, 0)) - 1
+
+  - name: corp_vs_market_delta_volume_lm
+    label: "corp_vs_market_delta_volume_lm"
+    description: "Delta corp vs market volume growth LM."
+    type: derived
+    type_params:
+      metrics: [corp_volume_growth_lm, market_volume_growth_lm]
+      expr: corp_volume_growth_lm - market_volume_growth_lm
+
+  - name: corp_market_share_lm
+    label: "corp_market_share_lm"
+    description: "Corporate market share LM."
+    type: derived
+    type_params:
+      metrics: [corp_ty_sales_lm, sum_ty_sales_lm]
+      expr: corp_ty_sales_lm / NULLIF(sum_ty_sales_lm, 0)
+
+  - name: corp_market_share_ly_lm
+    label: "corp_market_share_ly_lm"
+    description: "Corporate market share LY LM."
+    type: derived
+    type_params:
+      metrics: [corp_ly_sales_lm, sum_ly_sales_lm]
+      expr: corp_ly_sales_lm / NULLIF(sum_ly_sales_lm, 0)
+
+  - name: corp_market_share_delta_lm
+    label: "corp_market_share_delta_lm"
+    description: "Change in corporate market share LM vs LY LM."
+    type: derived
+    type_params:
+      metrics: [corp_market_share_lm, corp_market_share_ly_lm]
+      expr: corp_market_share_lm - corp_market_share_ly_lm
+
+  - name: corp_boost_ratio_lm
+    label: "corp_boost_ratio_lm"
+    description: "Ratio of corporate to market sales growth LM; NULL if market growth is zero."
+    type: derived
+    type_params:
+      metrics: [corp_sales_growth_lm, market_sales_growth_lm]
+      expr: IFF(market_sales_growth_lm = 0, NULL, corp_sales_growth_lm / market_sales_growth_lm)
+
+  # ---------- L3M ----------
+  - name: corp_ty_sales_l3m
+    label: "corp_ty_sales_l3m"
+    description: "Corporate TY sales L3M."
+    type: simple
+    type_params: { measure: ty_sales_l3m }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_ly_sales_l3m
+    label: "corp_ly_sales_l3m"
+    description: "Corporate LY sales L3M."
+    type: simple
+    type_params: { measure: ly_sales_l3m }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_sales_abs_growth_l3m
+    label: "corp_sales_abs_growth_l3m"
+    description: "Absolute corporate sales growth L3M."
+    type: derived
+    type_params:
+      metrics: [corp_ty_sales_l3m, corp_ly_sales_l3m]
+      expr: corp_ty_sales_l3m - corp_ly_sales_l3m
+
+  - name: corp_sales_growth_l3m
+    label: "corp_sales_growth_l3m"
+    description: "Corporate sales growth L3M."
+    type: derived
+    type_params:
+      metrics: [corp_ty_sales_l3m, corp_ly_sales_l3m]
+      expr: (corp_ty_sales_l3m / NULLIF(corp_ly_sales_l3m, 0)) - 1
+
+  - name: corp_vs_market_delta_sales_l3m
+    label: "corp_vs_market_delta_sales_l3m"
+    description: "Delta corp vs market sales growth L3M."
+    type: derived
+    type_params:
+      metrics: [corp_sales_growth_l3m, market_sales_growth_l3m]
+      expr: corp_sales_growth_l3m - market_sales_growth_l3m
+
+  - name: corp_ty_volume_l3m
+    label: "corp_ty_volume_l3m"
+    description: "Corporate TY volume L3M."
+    type: simple
+    type_params: { measure: ty_volume_l3m }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_ly_volume_l3m
+    label: "corp_ly_volume_l3m"
+    description: "Corporate LY volume L3M."
+    type: simple
+    type_params: { measure: ly_volume_l3m }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_volume_abs_growth_l3m
+    label: "corp_volume_abs_growth_l3m"
+    description: "Absolute corporate volume growth L3M."
+    type: derived
+    type_params:
+      metrics: [corp_ty_volume_l3m, corp_ly_volume_l3m]
+      expr: corp_ty_volume_l3m - corp_ly_volume_l3m
+
+  - name: corp_volume_growth_l3m
+    label: "corp_volume_growth_l3m"
+    description: "Corporate volume growth L3M."
+    type: derived
+    type_params:
+      metrics: [corp_ty_volume_l3m, corp_ly_volume_l3m]
+      expr: (corp_ty_volume_l3m / NULLIF(corp_ly_volume_l3m, 0)) - 1
+
+  - name: corp_vs_market_delta_volume_l3m
+    label: "corp_vs_market_delta_volume_l3m"
+    description: "Delta corp vs market volume growth L3M."
+    type: derived
+    type_params:
+      metrics: [corp_volume_growth_l3m, market_volume_growth_l3m]
+      expr: corp_volume_growth_l3m - market_volume_growth_l3m
+
+  - name: corp_market_share_l3m
+    label: "corp_market_share_l3m"
+    description: "Corporate market share L3M."
+    type: derived
+    type_params:
+      metrics: [corp_ty_sales_l3m, sum_ty_sales_l3m]
+      expr: corp_ty_sales_l3m / NULLIF(sum_ty_sales_l3m, 0)
+
+  - name: corp_market_share_ly_l3m
+    label: "corp_market_share_ly_l3m"
+    description: "Corporate market share LY L3M."
+    type: derived
+    type_params:
+      metrics: [corp_ly_sales_l3m, sum_ly_sales_l3m]
+      expr: corp_ly_sales_l3m / NULLIF(sum_ly_sales_l3m, 0)
+
+  - name: corp_market_share_delta_l3m
+    label: "corp_market_share_delta_l3m"
+    description: "Change in corporate market share L3M vs LY."
+    type: derived
+    type_params:
+      metrics: [corp_market_share_l3m, corp_market_share_ly_l3m]
+      expr: corp_market_share_l3m - corp_market_share_ly_l3m
+
+  - name: corp_boost_ratio_l3m
+    label: "corp_boost_ratio_l3m"
+    description: "Ratio of corporate to market sales growth L3M; NULL if market growth is zero."
+    type: derived
+    type_params:
+      metrics: [corp_sales_growth_l3m, market_sales_growth_l3m]
+      expr: IFF(market_sales_growth_l3m = 0, NULL, corp_sales_growth_l3m / market_sales_growth_l3m)
+
+  # ---------- YTD ----------
+  - name: corp_ty_sales_ytd
+    label: "corp_ty_sales_ytd"
+    description: "Corporate TY sales YTD."
+    type: simple
+    type_params: { measure: ty_sales_ytd }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_ly_sales_ytd
+    label: "corp_ly_sales_ytd"
+    description: "Corporate LY sales YTD."
+    type: simple
+    type_params: { measure: ly_sales_ytd }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_sales_abs_growth_ytd
+    label: "corp_sales_abs_growth_ytd"
+    description: "Absolute corporate sales growth YTD."
+    type: derived
+    type_params:
+      metrics: [corp_ty_sales_ytd, corp_ly_sales_ytd]
+      expr: corp_ty_sales_ytd - corp_ly_sales_ytd
+
+  - name: corp_sales_growth_ytd
+    label: "corp_sales_growth_ytd"
+    description: "Corporate sales growth YTD."
+    type: derived
+    type_params:
+      metrics: [corp_ty_sales_ytd, corp_ly_sales_ytd]
+      expr: (corp_ty_sales_ytd / NULLIF(corp_ly_sales_ytd, 0)) - 1
+
+  - name: corp_vs_market_delta_sales_ytd
+    label: "corp_vs_market_delta_sales_ytd"
+    description: "Delta corp vs market sales growth YTD."
+    type: derived
+    type_params:
+      metrics: [corp_sales_growth_ytd, market_sales_growth_ytd]
+      expr: corp_sales_growth_ytd - market_sales_growth_ytd
+
+  - name: corp_ty_volume_ytd
+    label: "corp_ty_volume_ytd"
+    description: "Corporate TY volume YTD."
+    type: simple
+    type_params: { measure: ty_volume_ytd }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_ly_volume_ytd
+    label: "corp_ly_volume_ytd"
+    description: "Corporate LY volume YTD."
+    type: simple
+    type_params: { measure: ly_volume_ytd }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_volume_abs_growth_ytd
+    label: "corp_volume_abs_growth_ytd"
+    description: "Absolute corporate volume growth YTD."
+    type: derived
+    type_params:
+      metrics: [corp_ty_volume_ytd, corp_ly_volume_ytd]
+      expr: corp_ty_volume_ytd - corp_ly_volume_ytd
+
+  - name: corp_volume_growth_ytd
+    label: "corp_volume_growth_ytd"
+    description: "Corporate volume growth YTD."
+    type: derived
+    type_params:
+      metrics: [corp_ty_volume_ytd, corp_ly_volume_ytd]
+      expr: (corp_ty_volume_ytd / NULLIF(corp_ly_volume_ytd, 0)) - 1
+
+  - name: corp_vs_market_delta_volume_ytd
+    label: "corp_vs_market_delta_volume_ytd"
+    description: "Delta corp vs market volume growth YTD."
+    type: derived
+    type_params:
+      metrics: [corp_volume_growth_ytd, market_volume_growth_ytd]
+      expr: corp_volume_growth_ytd - market_volume_growth_ytd
+
+  - name: corp_market_share_ytd
+    label: "corp_market_share_ytd"
+    description: "Corporate market share YTD."
+    type: derived
+    type_params:
+      metrics: [corp_ty_sales_ytd, sum_ty_sales_ytd]
+      expr: corp_ty_sales_ytd / NULLIF(sum_ty_sales_ytd, 0)
+
+  - name: corp_market_share_ly_ytd
+    label: "corp_market_share_ly_ytd"
+    description: "Corporate market share LY YTD."
+    type: derived
+    type_params:
+      metrics: [corp_ly_sales_ytd, sum_ly_sales_ytd]
+      expr: corp_ly_sales_ytd / NULLIF(sum_ly_sales_ytd, 0)
+
+  - name: corp_market_share_delta_ytd
+    label: "corp_market_share_delta_ytd"
+    description: "Change in corporate market share YTD vs LY."
+    type: derived
+    type_params:
+      metrics: [corp_market_share_ytd, corp_market_share_ly_ytd]
+      expr: corp_market_share_ytd - corp_market_share_ly_ytd
+
+  - name: corp_boost_ratio_ytd
+    label: "corp_boost_ratio_ytd"
+    description: "Ratio of corporate to market sales growth YTD; NULL if market growth is zero."
+    type: derived
+    type_params:
+      metrics: [corp_sales_growth_ytd, market_sales_growth_ytd]
+      expr: IFF(market_sales_growth_ytd = 0, NULL, corp_sales_growth_ytd / market_sales_growth_ytd)
+
+  # ---------- MAT ----------
+  - name: corp_ty_sales_mat
+    label: "corp_ty_sales_mat"
+    description: "Corporate TY sales MAT."
+    type: simple
+    type_params: { measure: ty_sales_mat }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_ly_sales_mat
+    label: "corp_ly_sales_mat"
+    description: "Corporate LY sales MAT."
+    type: simple
+    type_params: { measure: ly_sales_mat }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_sales_abs_growth_mat
+    label: "corp_sales_abs_growth_mat"
+    description: "Absolute corporate sales growth MAT."
+    type: derived
+    type_params:
+      metrics: [corp_ty_sales_mat, corp_ly_sales_mat]
+      expr: corp_ty_sales_mat - corp_ly_sales_mat
+
+  - name: corp_sales_growth_mat
+    label: "corp_sales_growth_mat"
+    description: "Corporate sales growth MAT."
+    type: derived
+    type_params:
+      metrics: [corp_ty_sales_mat, corp_ly_sales_mat]
+      expr: (corp_ty_sales_mat / NULLIF(corp_ly_sales_mat, 0)) - 1
+
+  - name: corp_vs_market_delta_sales_mat
+    label: "corp_vs_market_delta_sales_mat"
+    description: "Delta corp vs market sales growth MAT."
+    type: derived
+    type_params:
+      metrics: [corp_sales_growth_mat, market_sales_growth_mat]
+      expr: corp_sales_growth_mat - market_sales_growth_mat
+
+  - name: corp_ty_volume_mat
+    label: "corp_ty_volume_mat"
+    description: "Corporate TY volume MAT."
+    type: simple
+    type_params: { measure: ty_volume_mat }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_ly_volume_mat
+    label: "corp_ly_volume_mat"
+    description: "Corporate LY volume MAT."
+    type: simple
+    type_params: { measure: ly_volume_mat }
+    filter: |
+     {{ Entity('fact_item__corporation') }} = 'FictionalMeds'
+
+  - name: corp_volume_abs_growth_mat
+    label: "corp_volume_abs_growth_mat"
+    description: "Absolute corporate volume growth MAT."
+    type: derived
+    type_params:
+      metrics: [corp_ty_volume_mat, corp_ly_volume_mat]
+      expr: corp_ty_volume_mat - corp_ly_volume_mat
+
+  - name: corp_volume_growth_mat
+    label: "corp_volume_growth_mat"
+    description: "Corporate volume growth MAT."
+    type: derived
+    type_params:
+      metrics: [corp_ty_volume_mat, corp_ly_volume_mat]
+      expr: (corp_ty_volume_mat / NULLIF(corp_ly_volume_mat, 0)) - 1
+
+  - name: corp_vs_market_delta_volume_mat
+    label: "corp_vs_market_delta_volume_mat"
+    description: "Delta corp vs market volume growth MAT."
+    type: derived
+    type_params:
+      metrics: [corp_volume_growth_mat, market_volume_growth_mat]
+      expr: corp_volume_growth_mat - market_volume_growth_mat
+
+  - name: corp_market_share_mat
+    label: "corp_market_share_mat"
+    description: "Corporate market share MAT."
+    type: derived
+    type_params:
+      metrics: [corp_ty_sales_mat, sum_ty_sales_mat]
+      expr: corp_ty_sales_mat / NULLIF(sum_ty_sales_mat, 0)
+
+  - name: corp_market_share_ly_mat
+    label: "corp_market_share_ly_mat"
+    description: "Corporate market share LY MAT."
+    type: derived
+    type_params:
+      metrics: [corp_ly_sales_mat, sum_ly_sales_mat]
+      expr: corp_ly_sales_mat / NULLIF(sum_ly_sales_mat, 0)
+
+  - name: corp_market_share_delta_mat
+    label: "corp_market_share_delta_mat"
+    description: "Change in corporate market share MAT vs LY."
+    type: derived
+    type_params:
+      metrics: [corp_market_share_mat, corp_market_share_ly_mat]
+      expr: corp_market_share_mat - corp_market_share_ly_mat
+
+  - name: corp_boost_ratio_mat
+    label: "corp_boost_ratio_mat"
+    description: "Ratio of corporate to market sales growth MAT; NULL if market growth is zero."
+    type: derived
+    type_params:
+      metrics: [corp_sales_growth_mat, market_sales_growth_mat]
+      expr: IFF(market_sales_growth_mat = 0, NULL, corp_sales_growth_mat / market_sales_growth_mat)
