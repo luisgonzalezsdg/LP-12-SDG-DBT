@@ -5,13 +5,15 @@ config-version: 2
 profile: 'default'
 model-paths: ["models"]
 # ...otros paths...
+vars:
+  metricflow_time_spine_model: "dim_dates"
 
 clean-targets:
   - "target"
   - "dbt_packages"
 
 seeds:
-  semanticmind_dbt:  # Reemplaza con el nombre de tu proyecto
+  LP12:  # Reemplaza con el nombre de tu proyecto
     +grants:
       select: ['DT_SL_ADMIN', 'DT_ADMIN']
       insert: ['DT_SL_ADMIN', 'DT_ADMIN']
@@ -19,7 +21,7 @@ seeds:
 
 
 models:
-  semanticmind_dbt:
+  LP12:
     +quoting:
       database: false
       schema: false
@@ -31,5 +33,3 @@ models:
     dimensions:
       +materialized: table
     
-vars:
-  metricflow_time_spine_model: "dim_dates"
