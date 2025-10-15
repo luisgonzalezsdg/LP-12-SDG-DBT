@@ -27,7 +27,7 @@ semantic_models:
         expr: EXTRACT(YEAR FROM PERIOD)
 
 
-      # Month number (1–12)
+      # Month number
       - name: month_no
         type: categorical
         expr: EXTRACT(MONTH FROM PERIOD)
