@@ -1,0 +1,77 @@
+models:
+  - name: dim_calendar
+    description: "Calendar dimension. It contains a unique row for each period (month) present in the data."
+
+    columns:
+      - name: period
+        description: "Primary key for the date (first day of the month). Used to join with the fact table."
+        data_type: date
+        tests:
+          - unique
+          - not_null
+
+
+  - name: dim_category
+    description: "Product categories dimension."
+    columns:
+      - name: category
+        description: "Primary key. The name of the product category."
+        tests:
+          - unique
+          - not_null
+  
+  - name: dim_corporation
+    description: "Corporations or manufacturers dimension."
+    columns:
+      - name: corporation
+        description: "Primary key. The name of the corporation."
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_location
+    description: "Geographic locations dimension."
+    columns:
+      - name: country
+        description: "Primary key. The country of the sale."
+        tests:
+          - unique
+          - not_null
+      - name: region
+        description: "The geographic region to which the country belongs (e.g., Europe, America)."
+
+  - name: fact_sales
+    description: "Main fact table containing sales and volume metrics..."
+    time_spine:
+      standard_granularity_column: period 
+    columns:
+      - name: period
+        data_type: date
+        granularity: day
+        tests:
+           - not_null
+           - relationships:
+              arguments:
+                to: ref('dim_calendar')
+                field: period
+      - name: country
+        tests:
+           - not_null
+           - relationships:
+              arguments:
+                to: ref('dim_location')
+                field: country
+      - name: category
+        tests:
+           - not_null
+           - relationships:
+              arguments:
+                to: ref('dim_category')
+                field: category
+      - name: corporation
+        tests:
+           - not_null
+           - relationships:
+              arguments:
+                to: ref('dim_corporation')
+                field: corporation
