@@ -32,7 +32,7 @@ models:
   - name: dim_location
     description: "Geographic locations dimension."
     tests: 
-      - Test
+      - test
     columns:
       - name: country
         description: "Primary key. The country of the sale."
