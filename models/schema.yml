@@ -22,7 +22,7 @@ models:
         tests:
           - unique
           - not_null
-  
+
   - name: dim_corporation
     description: "Corporations or manufacturers dimension."
     columns:

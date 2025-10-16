@@ -902,3 +902,14 @@ metrics:
     type_params:
       metrics: [corp_sales_growth_mat, market_sales_growth_mat]
       expr: IFF(market_sales_growth_mat = 0, NULL, corp_sales_growth_mat / market_sales_growth_mat)
+
+  - name: avg_sales_price_ytd
+    label: "Average Sales Price YTD"
+    description: "El precio de venta promedio por unidad en lo que va del año (TY Sales YTD / TY Volume YTD)."
+    type: derived
+    type_params:
+      # Fórmula: Ventas / Volumen
+      expr: sum_ty_sales_ytd / NULLIF(sum_ty_volume_ytd, 0)
+      metrics:
+        - sum_ty_sales_ytd
+        - sum_ty_volume_ytd
