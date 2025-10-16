@@ -1,0 +1,21 @@
+# file: models/semantic_models/saved_queries.yml
+version: 2
+
+saved_queries:
+  - name: sq_ytd_performance_by_region
+    description: "Rendimiento YTD por región, incluyendo el precio de venta promedio."
+    label: "YTD Performance by Region"
+    query_params:
+      metrics:
+        - market_sales_growth_ytd
+        - market_volume_growth_ytd
+        - avg_sales_price_ytd # <-- ¡Nuestra nueva métrica!
+      group_by:
+        - "Dimension('country__region')" # <-- Agrupamos por la dimensión de región
+
+    exports:
+      - name: export_ytd_performance
+        config:
+          export_as: table
+          schema: INFORMATION_MART
+          alias: REPORT_YTD_PERFORMANCE_BY_REGION
