@@ -9,9 +9,9 @@ saved_queries:
       metrics:
         - market_sales_growth_ytd
         - market_volume_growth_ytd
-        - avg_sales_price_ytd # <-- ¡Nuestra nueva métrica!
+        - avg_sales_price_ytd
       group_by:
-        - "Dimension('country__region')" # <-- Agrupamos por la dimensión de región
+        - "Dimension('country__region')"
 
     exports:
       - name: export_ytd_performance
