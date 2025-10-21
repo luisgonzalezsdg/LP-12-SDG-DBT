@@ -15,9 +15,12 @@ clean-targets:
 seeds:
   LP12:  # Reemplaza con el nombre de tu proyecto
     +grants:
-      select: ['DT_SL_ADMIN', 'DT_ADMIN']
-      insert: ['DT_SL_ADMIN', 'DT_ADMIN']
-      update: ['DT_SL_ADMIN', 'DT_ADMIN']
+      #select: ['DT_SL_ADMIN', 'DT_ADMIN']
+      #insert: ['DT_SL_ADMIN', 'DT_ADMIN']
+      #update: ['DT_SL_ADMIN', 'DT_ADMIN']
+      select: ['ACCOUNTADMIN']
+      insert: ['ACCOUNTADMIN']
+      update: ['ACCOUNTADMIN']
 
 
 models:
