@@ -17,7 +17,7 @@ SELECT COALESCE(
     CORPORATION,
     STOCK_ANALYSIS,
     PRICING_ANALYSIS,
-    (TY_SALES_LM * 1.1) AS TY_SALES_LM, -- Incrementamos las ventas un 10% para la prueba
+    (TY_SALES_LM * 1.3) AS TY_SALES_LM, -- Incrementamos las ventas un 10% para la prueba
     --TY_SALES_LM,
     LY_SALES_LM,
     TY_VOLUME_LM,
@@ -35,3 +35,5 @@ SELECT COALESCE(
     TY_VOLUME_MAT,
     LY_VOLUME_MAT
 from {{ ref('dataset') }}
+
+where CATEGORY = 'Pain Relief'
