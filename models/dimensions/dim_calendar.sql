@@ -1,9 +1,9 @@
 {{ config(
-  post_hook = ["GRANT INSERT, UPDATE, DELETE ON TABLE {{ this }} TO ROLE DT_ADMIN;",
-        "GRANT SELECT ON TABLE {{ this }} TO ROLE DT_ADMIN;",
-        "GRANT INSERT, UPDATE, DELETE ON TABLE {{ this }} TO ROLE DT_SL_ADMIN;",
-        "GRANT SELECT ON TABLE {{ this }} TO ROLE DT_SL_ADMIN;",
-        "GRANT SELECT ON TABLE {{ this }} TO ROLE DT_SL_READER;"]
+  post_hook = ["GRANT INSERT, UPDATE, DELETE ON TABLE {{ this }} TO ROLE ACCOUNTADMIN;",
+        "GRANT SELECT ON TABLE {{ this }} TO ROLE ACCOUNTADMIN;",
+        "GRANT INSERT, UPDATE, DELETE ON TABLE {{ this }} TO ROLE ACCOUNTADMIN;",
+        "GRANT SELECT ON TABLE {{ this }} TO ROLE ACCOUNTADMIN;",
+        "GRANT SELECT ON TABLE {{ this }} TO ROLE ACCOUNTADMIN;"]
 ) }}
 
 select distinct
