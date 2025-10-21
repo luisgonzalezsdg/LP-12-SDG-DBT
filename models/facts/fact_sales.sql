@@ -7,7 +7,6 @@
 ) }}
 
 
-
 -- models/marts/fact_sales.sql
 SELECT COALESCE(
     TRY_TO_DATE(TRIM(PERIOD)::STRING, 'YYYY-MM'),
