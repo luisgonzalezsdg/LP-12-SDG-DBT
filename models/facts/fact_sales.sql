@@ -36,4 +36,4 @@ SELECT COALESCE(
     LY_VOLUME_MAT
 from {{ ref('dataset') }}
 
-where CATEGORY != 'Dermatology'
+where CATEGORY != 'Pain Relief'
