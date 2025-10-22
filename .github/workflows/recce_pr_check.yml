@@ -27,7 +27,7 @@ jobs:
         with:
           path: 'current'
 
-      # 3. Setup Python
+      # 3. Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -37,7 +37,7 @@ jobs:
       - name: Install dependencies
         working-directory: ./current
         run: |
-          pip install dbt-snowflake recce-cli
+          pip install dbt-snowflake recce
           dbt deps
 
       # 5. Configure dbt profiles
@@ -89,12 +89,11 @@ jobs:
         id: recce_check_run
         continue-on-error: true
         run: |
-          # Usa el comando correcto según recce-cli
-          recce run --target dev > recce_output.log 2>&1 || true
+          recce run --target dev > recce_output.log 2>&1
           EXIT_CODE=$?
           echo "Recce exit code: $EXIT_CODE"
 
-          # Escapamos output para GitHub Actions multiline
+          # Escape output for GitHub Actions multiline
           OUTPUT_CONTENT=$(sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' recce_output.log)
           echo "output=$OUTPUT_CONTENT" >> $GITHUB_OUTPUT
 
@@ -102,7 +101,7 @@ jobs:
             echo "summary=All Recce checks passed." >> $GITHUB_OUTPUT
             echo "conclusion=success" >> $GITHUB_OUTPUT
           else
-            echo "summary=One or more Recce checks failed. See recce_output.log." >> $GITHUB_OUTPUT
+            echo "summary=One or more Recce checks failed. See comment for details." >> $GITHUB_OUTPUT
             echo "conclusion=failure" >> $GITHUB_OUTPUT
           fi
 
@@ -113,9 +112,11 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const conclusion = "${{ steps.recce_check_run.outputs.conclusion }}" || 'failure';
-            const summary = "${{ steps.recce_check_run.outputs.summary }}" || 'No summary available';
-            const output = `${{ steps.recce_check_run.outputs.output }}` || 'No output available';
+            const conclusion = "${{ steps.recce_check_run.outputs.conclusion }}";
+            const summary = "${{ steps.recce_check_run.outputs.summary }}";
+            const output = `${{ steps.recce_check_run.outputs.output }}`;
+
+            console.log("🧠 Debug:", { conclusion, summary });
 
             let body = `### Recce OSS Checks Result 🤖\n\n* **Status:** ${summary}\n\n`;
             if (conclusion !== 'success') {
@@ -124,6 +125,7 @@ jobs:
               body += "\n```\n*Check Action logs for full details.*";
             }
 
+            // Post comment on PR
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -131,13 +133,14 @@ jobs:
               body: body
             });
 
+            // Create a GitHub check
             await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               name: 'Recce OSS Checks',
               head_sha: context.payload.pull_request.head.sha,
               status: 'completed',
-              conclusion: conclusion,
+              conclusion: conclusion || 'failure',
               output: {
                 title: 'Recce Check Results',
                 summary: summary,
