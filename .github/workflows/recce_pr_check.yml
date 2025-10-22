@@ -72,18 +72,18 @@ jobs:
 
       # 🧪 Ejecutar Recce y exponer outputs correctamente
       - name: Run Recce Checks
-        id: recce_check_run
         working-directory: ./current
-        shell: bash
+        id: recce_check_run
+        continue-on-error: true
         run: |
           recce check --target dev > recce_output.log 2>&1
           EXIT_CODE=$?
           echo "Recce exit code: $EXIT_CODE"
 
-          OUTPUT_CONTENT=$(cat recce_output.log)
-          echo "output<<EOF" >> $GITHUB_OUTPUT
-          echo "$OUTPUT_CONTENT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Escape output para que GitHub no rompa el multiline
+          OUTPUT_CONTENT=$(sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' recce_output.log)
+
+          echo "output=$OUTPUT_CONTENT" >> $GITHUB_OUTPUT
 
           if [ $EXIT_CODE -eq 0 ]; then
             echo "summary=All Recce checks passed." >> $GITHUB_OUTPUT
@@ -92,7 +92,7 @@ jobs:
             echo "summary=One or more Recce checks failed. See comment for details." >> $GITHUB_OUTPUT
             echo "conclusion=failure" >> $GITHUB_OUTPUT
           fi
-        continue-on-error: true
+          continue-on-error: true
 
       # 💬 Publicar Resultados en el PR
       - name: Post Recce Results to PR
