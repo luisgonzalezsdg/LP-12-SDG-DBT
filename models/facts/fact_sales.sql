@@ -35,5 +35,4 @@ SELECT COALESCE(
     TY_VOLUME_MAT,
     LY_VOLUME_MAT
 from {{ ref('dataset') }}
-
-where CATEGORY = 'Pain Relief'
+WHERE CATEGORY = 'Pain Relief'
