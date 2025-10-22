@@ -68,7 +68,25 @@ jobs:
           fi
           ls -al target
 
-      # 7. Collect enhanced debug info
+      # 7. Detect changed DBT models
+      - name: Detect Changed DBT Models
+        working-directory: ./current
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          CHANGED_MODELS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD models/ | grep '\.sql$' || true)
+          echo "$CHANGED_MODELS" > changed_models.txt
+
+          # Map changed files to DBT node names using manifest.json
+          if [ -f target/manifest.json ] && [ -s changed_models.txt ]; then
+            CHANGED_NODES=$(jq -r --argfile files changed_models.txt \
+              '[.nodes[] | select(.original_file_path as $p | $files | index($p)) | .name] | join(", ")' \
+              target/manifest.json)
+            echo "$CHANGED_NODES" > changed_nodes.txt
+          else
+            echo "" > changed_nodes.txt
+          fi
+
+      # 8. Collect enhanced debug info
       - name: Collect Enhanced DBT Debug Info
         working-directory: ./current
         run: |
@@ -82,18 +100,27 @@ jobs:
             TOTAL_SEEDS=$(jq '[.nodes[] | select(.resource_type=="seed")] | length' target/manifest.json)
             SAMPLE_MODELS=$(jq -r '[.nodes[] | select(.resource_type=="model") | .name] | .[:10] | join(", ")' target/manifest.json)
 
+            # Read changed nodes
+            if [ -f changed_nodes.txt ]; then
+              CHANGED_NODES=$(cat changed_nodes.txt)
+            else
+              CHANGED_NODES=""
+            fi
+
             SUMMARY=$(jq -n \
               --arg total_models "$TOTAL_MODELS" \
               --arg total_sources "$TOTAL_SOURCES" \
               --arg total_tests "$TOTAL_TESTS" \
               --arg total_seeds "$TOTAL_SEEDS" \
               --arg sample_models "$SAMPLE_MODELS" \
+              --arg changed_nodes "$CHANGED_NODES" \
               '{
                 total_models: ($total_models|tonumber),
                 total_sources: ($total_sources|tonumber),
                 total_tests: ($total_tests|tonumber),
                 total_seeds: ($total_seeds|tonumber),
-                sample_models: $sample_models
+                sample_models: $sample_models,
+                changed_models: $changed_nodes
               }')
           else
             SUMMARY=$(jq -n '{error: "manifest.json not found"}')
@@ -102,7 +129,7 @@ jobs:
           echo $SUMMARY > $DEBUG_OUTPUT
           head -n 20 $DEBUG_OUTPUT
 
-      # 8. Post PR comment
+      # 9. Post PR comment
       - name: Post Debug Info to PR
         uses: actions/github-script@v6
         if: always()
@@ -125,6 +152,7 @@ jobs:
                   body += `- **Total Tests:** ${parsed.total_tests}\n`;
                   body += `- **Total Seeds:** ${parsed.total_seeds}\n`;
                   body += `- **Sample Models:** ${parsed.sample_models}\n`;
+                  body += `- **Changed Models in PR:** ${parsed.changed_models || 'None'}\n`;
                 }
               } else {
                 body += "⚠️ Debug file not found.\n";
