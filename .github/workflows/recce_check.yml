@@ -105,24 +105,21 @@ jobs:
         run: |
           set +e
       
-          # Run recce and capture both stdout and stderr
-          recce run --target dev --output json > recce_results.json 2>&1
+          # Capture both stdout and stderr, specify correct target path
+          recce run --target dev --target-path target --output json > recce_results.json 2>&1
           EXIT_CODE=$?
           echo "Recce exit code: $EXIT_CODE"
       
-          # Show first few lines for debugging
           echo "----- Recce Output Preview -----"
           head -n 20 recce_results.json || echo "No output"
           echo "--------------------------------"
       
-          # Validate JSON
           if ! jq . recce_results.json > /dev/null 2>&1; then
             echo "recce_results.json does not contain valid JSON. Recce likely failed."
             EXIT_CODE=2
             echo '{"summary": null, "error": "Recce failed to produce valid JSON output. Check recce_results.json for debug logs."}' > recce_results.json
           fi
       
-          # Set GitHub output variables
           if [ $EXIT_CODE -eq 0 ]; then
             echo "summary=Recce found no differences." >> $GITHUB_OUTPUT
             echo "conclusion=success" >> $GITHUB_OUTPUT
@@ -135,6 +132,7 @@ jobs:
           fi
       
           exit 0
+
 
 
 
