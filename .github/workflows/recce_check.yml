@@ -129,36 +129,40 @@ jobs:
             const fs = require('fs');
             const recceOutputFile = './current/recce_results.json';
             let body = '### Recce Diff Results 🤖\n\n';
-            // Use the outputs set in the previous step
-            let conclusion = '${{ steps.recce_run.outputs.conclusion }}' || 'failure';
-            let summary = '${{ steps.recce_run.outputs.summary }}' || 'Recce check failed to produce output.';
+            // Get conclusion and summary directly from the previous step's outputs
+            let conclusion = '${{ steps.recce_run.outputs.conclusion }}' || 'failure'; // Default to failure
+            let summary = '${{ steps.recce_run.outputs.summary }}' || 'Recce check failed or status unknown.';
 
+            body += `*Check Result: ${summary}*\n\n`; // Add summary first
+
+            // Try to add details ONLY if the file exists and looks like JSON
+            let detailsAdded = false;
             try {
               if (fs.existsSync(recceOutputFile)) {
-                const results = JSON.parse(fs.readFileSync(recceOutputFile, 'utf8'));
-                if (results && results.summary) {
-                   body += `- **Models Checked:** ${results.summary.total || 'N/A'}\n`;
-                   body += `- **Models with Diff:** ${results.summary.modified || 0}\n`;
-                   body += `- **Models Added:** ${results.summary.added || 0}\n`;
-                   body += `- **Models Removed:** ${results.summary.removed || 0}\n\n`;
+                const fileContent = fs.readFileSync(recceOutputFile, 'utf8');
+                // Basic check if it looks like JSON before parsing
+                if (fileContent && fileContent.trim().startsWith('{')) {
+                  const results = JSON.parse(fileContent);
+                  if (results && results.summary) {
+                     body += `- **Models Checked:** ${results.summary.total || 'N/A'}\n`;
+                     body += `- **Models with Diff:** ${results.summary.modified || 0}\n`;
+                     body += `- **Models Added:** ${results.summary.added || 0}\n`;
+                     body += `- **Models Removed:** ${results.summary.removed || 0}\n\n`;
+                     detailsAdded = true;
+                  }
+                  // Optionally add a link if recce output provides one
+                  if (results && results.report_url) {
+                      body += `[View Full Report](${results.report_url})\n`;
+                  }
                 }
-                 // Add the summary message determined in the previous step
-                body += `*Result: ${summary}*\n`;
-                // Optionally add a link if recce output provides one (adjust property name if needed)
-                if (results && results.report_url) {
-                    body += `[View Full Report](${results.report_url})\n`;
-                } else if (conclusion !== 'success') {
-                    body += `Check Action logs for details.\n`;
-                }
-
-              } else {
-                 body += `Recce output file (${recceOutputFile}) not found. ${summary}\n Check Action logs.\n`;
-                 conclusion = 'failure';
               }
             } catch (error) {
-              console.error(`Error processing Recce results: ${error}`);
-              body += `Failed to process Recce report. ${summary}\n Error: ${error.message}\n`;
-              conclusion = 'failure';
+              console.error(`Error processing Recce results file: ${error}`);
+              // Don't overwrite the main summary if JSON processing fails
+            }
+
+            if (!detailsAdded && conclusion !== 'success') {
+               body += `Could not parse detailed results from recce_results.json. Check Action logs.\n`;
             }
 
             // Post Comment
