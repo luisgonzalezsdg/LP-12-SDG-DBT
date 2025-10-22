@@ -43,8 +43,8 @@ jobs:
         run: |
           mkdir -p ~/.dbt
           cat <<EOF > ~/.dbt/profiles.yml
-${{ secrets.DBT_PROFILES_YML }}
-EOF
+          ${{ secrets.DBT_PROFILES_YML }}
+          EOF
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
