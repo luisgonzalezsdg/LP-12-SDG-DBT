@@ -66,6 +66,7 @@ jobs:
           set -x
           dbt debug
           dbt compile --target dev --target-path target || true
+
           if [ -f target/manifest.json ]; then
             jq '.nodes | keys' target/manifest.json > dbt_nodes.json
           fi
