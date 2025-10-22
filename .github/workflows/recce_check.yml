@@ -3,12 +3,12 @@ name: Recce Diff on PR
 on:
   pull_request:
     branches:
-      - main  # Cambia a 'develop' si esa es tu rama de integración
+      - main  # O 'develop' si es tu rama de integración
 
-permissions:       # Permisos necesarios para la action
-  contents: read   # Para hacer checkout del código
-  pull-requests: write # Para escribir comentarios en el PR
-  checks: write    # Para escribir status checks
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
 
 jobs:
   recce_diff:
@@ -18,121 +18,117 @@ jobs:
       - name: Checkout Base Branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.base_ref }} # Rama destino del PR (main o develop)
-          path: 'base'              # Descarga el código en una carpeta 'base'
+          ref: ${{ github.base_ref }}
+          path: 'base'
 
       # 2. Checkout del código ACTUAL (la rama del PR)
       - name: Checkout PR Branch
         uses: actions/checkout@v4
         with:
-          path: 'current'           # Descarga el código en una carpeta 'current'
+          path: 'current'
 
       # 3. Configurar Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11' # Asegúrate que sea compatible con tus paquetes
+          python-version: '3.11'
 
-      # 4. Instalar dependencias (dbt, adapter, recce)
-      #    Se hace desde la carpeta 'current' porque ahí está tu requirements.txt o similar
+      # 4. Instalar dependencias
       - name: Install dependencies
         working-directory: ./current
         run: |
-          pip install dbt-snowflake recce # Ajusta si usas requirements.txt
-          dbt deps # Instala paquetes de dbt
+          pip install dbt-snowflake recce
+          dbt deps
 
       # 5. Crear profiles.yml usando secretos de GitHub
-      #    ¡IMPORTANTE! Necesitas crear un secreto llamado DBT_PROFILES_YML en GitHub
       - name: Configure dbt profiles
-        # Corre desde fuera para crear el directorio .dbt en el home del runner
         run: |
           mkdir -p ~/.dbt
-          echo "${{ secrets.DBT_PROFILES_YML }}" > ~/.dbt/profiles.yml
+          cat << EOF > ~/.dbt/profiles.yml
+          ${{ secrets.DBT_PROFILES_YML }}
+          EOF
         env:
-          # Pasa las credenciales como variables de entorno al profile
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          # Añade otras variables que necesite tu profiles.yml (ROLE, WAREHOUSE, DATABASE, SCHEMA_DEV, SCHEMA_PROD)
           SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
           SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-          SNOWFLAKE_SCHEMA_DEV: 'DEV' # O el schema que uses para PRs
-          SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ' # O tu schema de producción
+          SNOWFLAKE_SCHEMA_DEV: 'DEV'
+          SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ'
 
       # 6. Generar artefactos BASE (usando el código 'base' y target 'prod')
       - name: Generate Base Artifacts
-        working-directory: ./base # Ejecuta dbt desde la carpeta del código base
+        working-directory: ./base
         run: |
           echo "Compiling base..."
-          dbt compile --target prod --target-path ../current/target-base # Guarda artefactos relativos a 'current'
+          dbt compile --target prod --target-path ../current/target-base
           echo "Generating base docs..."
           dbt docs generate --target prod --target-path ../current/target-base
 
       # 7. Generar artefactos ACTUALES (usando el código 'current' y target 'dev')
       - name: Generate Current Artifacts
-        working-directory: ./current # Ejecuta dbt desde la carpeta del código actual
+        working-directory: ./current
         run: |
           echo "Compiling current..."
           dbt compile --target dev --target-path target
           echo "Generating current docs..."
           dbt docs generate --target dev --target-path target
 
-      # 8. Ejecutar Recce y publicar resultados
-      #    Usaremos una action de la comunidad para publicar comentarios si existe,
-      #    o un script manual si no. (Esta parte puede necesitar ajustes)
-      #    Opción A: Usando una action hipotética (revisar si existe una oficial)
-      #    - name: Run Recce and Post Comment
-      #      uses: reccehq/recce-github-action@v1 # Reemplaza con la action correcta si existe
-      #      with:
-      #        github_token: ${{ secrets.GITHUB_TOKEN }}
-      #        # Podría necesitar las rutas a los manifests/catalogs si no son las por defecto
-      #        # base_manifest: ./current/target-base/manifest.json
-
-      #    Opción B: Ejecución manual y publicación con script (más control)
+      # 8. Ejecutar Recce Diff y capturar el resultado
       - name: Run Recce Diff
-        working-directory: ./current # Ejecuta recce desde la carpeta actual
-        id: recce_run # Le damos un ID al paso para referenciar su salida
+        working-directory: ./current
+        id: recce_run
+        continue-on-error: true # Continúa aunque recce encuentre diferencias (exit code 1)
         run: |
-          # Ejecuta recce run para generar el estado y obtener diferencias.
-          # El --output json guarda el resultado para el siguiente paso.
-          # --no-browser evita que intente abrir una ventana.
-          recce run --target dev --output json > recce_results.json || echo "Recce found diffs or failed"
-          # Extraemos un resumen simple del JSON para el check de GitHub
-          # (Este jq es un ejemplo, puede necesitar ajustarse según la salida de recce)
-          SUMMARY=$(jq -r '.summary | "Models added: \(.added), removed: \(.removed), modified: \(.modified)"' recce_results.json)
-          echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+          # Ejecuta 'recce run' para comparar y guarda el resultado en un archivo JSON
+          recce run --target dev --output json --no-browser > recce_results.json
+          EXIT_CODE=$?
+          echo "Recce exit code: $EXIT_CODE"
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "summary=Recce found no differences." >> $GITHUB_OUTPUT
+            echo "conclusion=success" >> $GITHUB_OUTPUT
+          elif [ $EXIT_CODE -eq 1 ]; then
+            echo "summary=Recce found differences!" >> $GITHUB_OUTPUT
+            echo "conclusion=failure" >> $GITHUB_OUTPUT
+          else
+            echo "summary=Recce execution failed (Exit Code: $EXIT_CODE). Check logs." >> $GITHUB_OUTPUT
+            echo "conclusion=failure" >> $GITHUB_OUTPUT
+          fi
 
+      # 9. Publicar los resultados de Recce en el Pull Request
       - name: Post Recce Results to PR
         uses: actions/github-script@v6
-        if: always() # Ejecuta incluso si recce run falló (para reportar el fallo)
+        if: always() # Se ejecuta siempre para reportar el estado, incluso si el paso anterior falló
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
+            const recceOutputFile = './current/recce_results.json';
             let body = '### Recce Diff Results 🤖\n\n';
+            let conclusion = '${{ steps.recce_run.outputs.conclusion }}' || 'failure';
+            let summary = '${{ steps.recce_run.outputs.summary }}' || 'Recce check failed to produce output.';
+
             try {
-              const results = JSON.parse(fs.readFileSync('./current/recce_results.json', 'utf8'));
-              // Formatea un resumen (ajusta según la estructura real del JSON de recce)
-              if (results.summary) {
-                body += `- **Models Checked:** ${results.summary.total || 'N/A'}\n`;
-                body += `- **Models with Diff:** ${results.summary.modified || 0}\n`;
-                body += `- **Models Added:** ${results.summary.added || 0}\n`;
-                body += `- **Models Removed:** ${results.summary.removed || 0}\n\n`;
-                if (results.diff_url) { // Si recce run genera una URL del informe
-                   body += `[View Full Report](${results.diff_url})\n`;
-                } else {
-                   // Podrías añadir más detalles aquí si el JSON los contiene
-                   body += 'Check logs for details.\n';
+              if (fs.existsSync(recceOutputFile)) {
+                const results = JSON.parse(fs.readFileSync(recceOutputFile, 'utf8'));
+                if (results && results.summary) {
+                   body += `- **Models Checked:** ${results.summary.total || 'N/A'}\n`;
+                   body += `- **Models with Diff:** ${results.summary.modified || 0}\n`;
+                   body += `- **Models Added:** ${results.summary.added || 0}\n`;
+                   body += `- **Models Removed:** ${results.summary.removed || 0}\n\n`;
                 }
               } else {
-                 body += 'Recce execution failed or produced no summary. Check Action logs.\n';
+                 body += `Recce output file not found. ${summary}\n Check Action logs.\n`;
+                 conclusion = 'failure';
               }
             } catch (error) {
-              console.error("Error reading or parsing recce_results.json:", error);
-              body += `Failed to generate Recce report. Check Action logs.\nError: ${error.message}\n`;
+              console.error(`Error processing Recce results: ${error}`);
+              body += `Failed to process Recce report. ${summary}\n Error: ${error.message}\n`;
+              conclusion = 'failure';
             }
 
+            // Publica el comentario en el PR
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -140,17 +136,16 @@ jobs:
               body: body
             });
 
-            // Opcional: Crear un Status Check (útil para branch protection)
-            const conclusion = (steps.recce_run.outcome == 'success' && !body.includes('Models with Diff: 0')) ? 'success' : 'failure';
-             github.rest.checks.create({
+            // Crea o actualiza el "Status Check" en el PR
+            github.rest.checks.create({
                owner: context.repo.owner,
                repo: context.repo.repo,
                name: 'Recce Diff Check',
                head_sha: context.payload.pull_request.head.sha,
                status: 'completed',
-               conclusion: conclusion, // 'success' or 'failure'
+               conclusion: conclusion,
                output: {
                  title: 'Recce Diff Results',
-                 summary: steps.recce_run.outputs.summary || 'Recce check completed.'
+                 summary: summary
                }
              });
