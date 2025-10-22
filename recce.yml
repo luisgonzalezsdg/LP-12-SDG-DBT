@@ -1,11 +1,16 @@
-# Preset Checks
-# Please see https://docs.datarecce.io/features/preset-checks/
+# recce.yml
+
 checks:
-- name: Row count diff
-  description: Check the row count diff for all table models.
-  type: row_count_diff
-  params:
-    select: state:modified,config.materialized:table
-- name: Schema diff
-  description: Check the schema diff for all nodes.
-  type: schema_diff
+  # Check 1: Compara el número de filas de los modelos modificados
+  - name: Row count diff for modified tables
+    description: Check the row count difference for modified models and their downstream dependencies.
+    type: row_count_diff
+    params:
+      select: state:modified+
+
+  # Check 2: Compara el esquema (columnas, tipos) de los modelos modificados
+  - name: Schema diff for modified nodes
+    description: Check the schema difference for all modified nodes and their downstream dependencies.
+    type: schema_diff
+    params:
+      select: state:modified+
