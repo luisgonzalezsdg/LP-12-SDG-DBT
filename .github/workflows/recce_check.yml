@@ -57,13 +57,11 @@ jobs:
       - name: Compile DBT Project
         working-directory: ./current
         run: |
-          set +e
-          echo "Compiling DBT project..."
+          set -x
+          dbt debug
           dbt compile --target dev --target-path target
-          echo "Listing models in manifest..."
-          if [ -f target/manifest.json ]; then
-            cat target/manifest.json | jq '.nodes | keys' > dbt_nodes.json
-          fi
+          ls -al target
+
 
       # 7. Collect debug info
       - name: Collect DBT Debug Info
