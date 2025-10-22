@@ -3,7 +3,7 @@ name: PR DBT Debug Info
 on:
   pull_request:
     branches:
-      - main  # or your main integration branch
+      - main
 
 permissions:
   contents: read
@@ -36,13 +36,14 @@ jobs:
       - name: Install dependencies
         working-directory: ./current
         run: |
-          pip install dbt-snowflake
+          pip install dbt-snowflake jq
 
-      # 5. Create dbt profiles.yml
+      # 5. Configure dbt profiles
       - name: Configure dbt profiles
         run: |
           mkdir -p ~/.dbt
           echo "${{ secrets.DBT_PROFILES_YML }}" > ~/.dbt/profiles.yml
+          cat ~/.dbt/profiles.yml
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -51,21 +52,29 @@ jobs:
           SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
 
-      # 6. Compile DBT project
+      # 6. Compile DBT Project
       - name: Compile DBT Project
         working-directory: ./current
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
         run: |
           set -x
           dbt debug
-          dbt compile --target dev --target-path target
+          dbt compile --target dev --target-path target || true
+          if [ -f target/manifest.json ]; then
+            jq '.nodes | keys' target/manifest.json > dbt_nodes.json
+          fi
           ls -al target
-
 
       # 7. Collect debug info
       - name: Collect DBT Debug Info
         working-directory: ./current
         run: |
-          set +e
           DEBUG_OUTPUT="dbt_debug.json"
           SUMMARY="{}"
 
