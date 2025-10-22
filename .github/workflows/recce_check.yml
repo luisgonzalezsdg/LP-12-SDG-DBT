@@ -13,7 +13,6 @@ jobs:
   dbt_debug:
     runs-on: ubuntu-latest
     env:
-      # Job-level environment variables for DBT env_var() resolution
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
@@ -47,13 +46,13 @@ jobs:
         run: |
           pip install dbt-snowflake jq
 
-      # 5. Configure dbt profiles (safe for multiline secrets)
+      # 5. Configure dbt profiles
       - name: Configure dbt profiles
         run: |
           mkdir -p ~/.dbt
           cat <<'EOF' > ~/.dbt/profiles.yml
-          ${{ secrets.DBT_PROFILES_YML }}
-          EOF
+${{ secrets.DBT_PROFILES_YML }}
+EOF
           cat ~/.dbt/profiles.yml
 
       # 6. Compile DBT Project
@@ -72,13 +71,15 @@ jobs:
       - name: Detect Changed DBT Models
         working-directory: ./current
         run: |
-          git fetch origin ${{ github.base_ref }}
-          CHANGED_MODELS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD models/ | grep '\.sql$' || true)
+          # Ensure full history is available
+          git fetch origin ${{ github.base_ref }} --unshallow || true
+          BASE=$(git merge-base origin/${{ github.base_ref }} HEAD)
+          CHANGED_MODELS=$(git diff --name-only $BASE HEAD models/ | grep '\.sql$' || true)
           echo "$CHANGED_MODELS" > changed_models.txt
 
           # Map changed files to DBT node names using manifest.json
           if [ -f target/manifest.json ] && [ -s changed_models.txt ]; then
-            CHANGED_NODES=$(jq -r --argfile files changed_models.txt \
+            CHANGED_NODES=$(jq -r --slurpfile files changed_models.txt \
               '[.nodes[] | select(.original_file_path as $p | $files | index($p)) | .name] | join(", ")' \
               target/manifest.json)
             echo "$CHANGED_NODES" > changed_nodes.txt
@@ -91,7 +92,6 @@ jobs:
         working-directory: ./current
         run: |
           DEBUG_OUTPUT="dbt_debug.json"
-          SUMMARY="{}"
 
           if [ -f target/manifest.json ]; then
             TOTAL_MODELS=$(jq '[.nodes[] | select(.resource_type=="model")] | length' target/manifest.json)
@@ -100,7 +100,6 @@ jobs:
             TOTAL_SEEDS=$(jq '[.nodes[] | select(.resource_type=="seed")] | length' target/manifest.json)
             SAMPLE_MODELS=$(jq -r '[.nodes[] | select(.resource_type=="model") | .name] | .[:10] | join(", ")' target/manifest.json)
 
-            # Read changed nodes
             if [ -f changed_nodes.txt ]; then
               CHANGED_NODES=$(cat changed_nodes.txt)
             else
