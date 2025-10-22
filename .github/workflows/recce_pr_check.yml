@@ -13,6 +13,7 @@ permissions:
 jobs:
   recce_checks:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Base Branch
         uses: actions/checkout@v4
@@ -35,6 +36,11 @@ jobs:
         run: |
           pip install dbt-snowflake recce
           dbt deps
+
+      - name: Verify Recce Installation
+        run: |
+          which recce || echo "Recce not found"
+          recce --version || echo "Recce version check failed"
 
       - name: Configure dbt profiles
         run: |
@@ -69,12 +75,25 @@ jobs:
           dbt compile --target dev --target-path target
           dbt docs generate --target dev --target-path target
 
+      - name: Check generated artifacts
+        run: |
+          echo "=== Base artifacts ==="
+          ls -l ./current/target-base || echo "No target-base found"
+          echo "=== Current artifacts ==="
+          ls -l ./current/target || echo "No target found"
 
       # 🧪 Ejecutar Recce y exponer outputs correctamente
       - name: Run Recce Checks
         working-directory: ./current
         id: recce_check_run
         continue-on-error: true
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
         run: |
           recce check --target dev > recce_output.log 2>&1
           EXIT_CODE=$?
@@ -92,7 +111,13 @@ jobs:
             echo "summary=One or more Recce checks failed. See comment for details." >> $GITHUB_OUTPUT
             echo "conclusion=failure" >> $GITHUB_OUTPUT
           fi
-          continue-on-error: true
+
+      # 🔍 Depurar el log de Recce (si falló)
+      - name: Debug Recce Log
+        if: always()
+        run: |
+          echo "=== Recce Output Log ==="
+          cat ./current/recce_output.log || echo "No recce_output.log found"
 
       # 💬 Publicar Resultados en el PR
       - name: Post Recce Results to PR
@@ -127,7 +152,7 @@ jobs:
               name: 'Recce OSS Checks',
               head_sha: context.payload.pull_request.head.sha,
               status: 'completed',
-              conclusion: conclusion || 'failure', // 👈 fallback importante
+              conclusion: conclusion || 'failure', # fallback
               output: {
                 title: 'Recce Check Results',
                 summary: summary,
