@@ -1,0 +1,145 @@
+name: Recce OSS Checks on PR
+
+on:
+  pull_request:
+    branches:
+      - main  # O 'develop' si esa es tu rama de integración
+
+permissions:
+  contents: read
+  pull-requests: write # Necesario para escribir comentarios
+  checks: write        # Necesario para crear el status check
+
+jobs:
+  recce_checks:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Checkout del código BASE (la rama a la que va el PR, ej: main)
+      - name: Checkout Base Branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+          path: 'base'
+
+      # 2. Checkout del código ACTUAL (PR)
+      - name: Checkout PR Branch
+        uses: actions/checkout@v4
+        with:
+          path: 'current' # El código del PR va a la carpeta 'current'
+
+      # 3. Configurar Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      # 4. Instalar dependencias
+      - name: Install dependencies
+        working-directory: ./current
+        run: |
+          pip install dbt-snowflake recce
+          dbt deps
+
+      # 5. Crear profiles.yml usando secretos
+      - name: Configure dbt profiles
+        run: |
+          mkdir -p ~/.dbt
+          cat << EOF > ~/.dbt/profiles.yml
+          ${{ secrets.DBT_PROFILES_YML }}
+          EOF
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA_DEV: 'DEV' 
+          SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ'
+
+      # 6. Generar artefactos BASE (usando código 'base', target 'prod')
+      - name: Generate Base Artifacts
+        working-directory: ./base
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+        run: |
+          dbt compile --target prod --target-path ../current/target-base
+          dbt docs generate --target prod --target-path ../current/target-base
+
+      # 7. Generar artefactos ACTUALES (usando código 'current', target 'dev')
+      - name: Generate Current Artifacts
+        working-directory: ./current
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+        run: |
+          dbt compile --target dev --target-path target
+          dbt docs generate --target dev --target-path target
+
+      # 8. Ejecutar Recce Checks
+      - name: Run Recce Checks
+        working-directory: ./current
+        id: recce_check_run
+        continue-on-error: true
+        run: |
+          recce check --target dev > recce_output.log 2>&1
+          EXIT_CODE=$?
+          echo "Recce exit code: $EXIT_CODE"
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          cat recce_output.log >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "summary=All Recce checks passed." >> $GITHUB_OUTPUT
+            echo "conclusion=success" >> $GITHUB_OUTPUT
+          else
+            echo "summary=One or more Recce checks failed. See comment for details." >> $GITHUB_OUTPUT
+            echo "conclusion=failure" >> $GITHUB_OUTPUT
+          fi
+
+      # 9. Publicar Resultados en el PR
+      - name: Post Recce Results to PR
+        uses: actions/github-script@v6
+        if: always()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const conclusion = '${{ steps.recce_check_run.outputs.conclusion }}';
+            const summary = '${{ steps.recce_check_run.outputs.summary }}';
+            const output = `${{ steps.recce_check_run.outputs.output }}`;
+
+            let body = `### Recce OSS Checks Result 🤖\n\n* **Status:** ${summary}\n\n`;
+            if (conclusion !== 'success') {
+              body += "**Details:**\n```\n";
+              body += output.substring(0, 1500) + (output.length > 1500 ? '\n... (Log truncated)' : '');
+              body += "\n```\n*Check Action logs for full details.*";
+            }
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+            await github.rest.checks.create({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               name: 'Recce OSS Checks', // Nombre diferente al de dbt Cloud
+               head_sha: context.payload.pull_request.head.sha,
+               status: 'completed',
+               conclusion: conclusion,
+               output: {
+                 title: 'Recce Check Results',
+                 summary: summary,
+                 text: output.substring(0, 65535)
+               }
+             });
