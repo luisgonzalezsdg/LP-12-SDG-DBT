@@ -103,6 +103,9 @@ jobs:
         id: recce_run
         continue-on-error: true
         run: |
+          # Disable "exit on error" so we can handle exit codes manually
+          set +e
+      
           recce run --target dev --output json > recce_results.json 2>/dev/null
           EXIT_CODE=$?
           echo "Recce exit code: $EXIT_CODE"
@@ -124,8 +127,9 @@ jobs:
             echo "conclusion=failure" >> $GITHUB_OUTPUT
           fi
       
-          # ✅ Always exit 0 so GitHub doesn't mark this step as failed
+          # ✅ Prevent GitHub from marking this step as failed
           exit 0
+
 
       # 9. Post Recce Results to PR
       - name: Post Recce Results to PR
