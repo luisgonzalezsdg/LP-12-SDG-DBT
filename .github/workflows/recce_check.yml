@@ -103,19 +103,26 @@ jobs:
         id: recce_run
         continue-on-error: true
         run: |
-          # Disable "exit on error" so we can handle exit codes manually
           set +e
       
-          recce run --target dev --output json > recce_results.json 2>/dev/null
+          # Run recce and capture both stdout and stderr
+          recce run --target dev --output json > recce_results.json 2>&1
           EXIT_CODE=$?
           echo "Recce exit code: $EXIT_CODE"
       
+          # Show first few lines for debugging
+          echo "----- Recce Output Preview -----"
+          head -n 20 recce_results.json || echo "No output"
+          echo "--------------------------------"
+      
+          # Validate JSON
           if ! jq . recce_results.json > /dev/null 2>&1; then
             echo "recce_results.json does not contain valid JSON. Recce likely failed."
             EXIT_CODE=2
-            echo '{"summary": null, "error": "Recce failed to produce valid JSON output"}' > recce_results.json
+            echo '{"summary": null, "error": "Recce failed to produce valid JSON output. Check recce_results.json for debug logs."}' > recce_results.json
           fi
       
+          # Set GitHub output variables
           if [ $EXIT_CODE -eq 0 ]; then
             echo "summary=Recce found no differences." >> $GITHUB_OUTPUT
             echo "conclusion=success" >> $GITHUB_OUTPUT
@@ -127,13 +134,14 @@ jobs:
             echo "conclusion=failure" >> $GITHUB_OUTPUT
           fi
       
-          # ✅ Prevent GitHub from marking this step as failed
           exit 0
+
 
 
       # 9. Post Recce Results to PR
       - name: Post Recce Results to PR
         uses: actions/github-script@v6
+        
         if: always() # Always run to report status
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
