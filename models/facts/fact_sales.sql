@@ -35,3 +35,4 @@ SELECT COALESCE(
     TY_VOLUME_MAT,
     LY_VOLUME_MAT
 from {{ ref('dataset') }}
+WHERE CATEGORY = 'Pain Relief'
