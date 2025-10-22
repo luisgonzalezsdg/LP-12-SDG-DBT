@@ -13,7 +13,7 @@ jobs:
   dbt_debug:
     runs-on: ubuntu-latest
     env:
-      # Job-level env vars ensure DBT can see them in all steps
+      # Job-level environment variables for DBT env_var() resolution
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
@@ -47,12 +47,13 @@ jobs:
         run: |
           pip install dbt-snowflake jq
 
-      # 5. Configure dbt profiles
+      # 5. Configure dbt profiles (safe for multiline secrets)
       - name: Configure dbt profiles
         run: |
           mkdir -p ~/.dbt
-          # Write the secret literally to the file (no quotes)
-          echo "${{ secrets.DBT_PROFILES_YML }}" > ~/.dbt/profiles.yml
+          cat <<'EOF' > ~/.dbt/profiles.yml
+${{ secrets.DBT_PROFILES_YML }}
+EOF
           cat ~/.dbt/profiles.yml
 
       # 6. Compile DBT Project
