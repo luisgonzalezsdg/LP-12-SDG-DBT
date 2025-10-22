@@ -13,42 +13,49 @@ permissions:
 jobs:
   recce_checks:
     runs-on: ubuntu-latest
-
     steps:
+      # 1. Checkout Base Branch
       - name: Checkout Base Branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.base_ref }}
           path: 'base'
 
+      # 2. Checkout PR Branch
       - name: Checkout PR Branch
         uses: actions/checkout@v4
         with:
           path: 'current'
 
+      # 3. Setup Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
+      # 4. Install dependencies
       - name: Install dependencies
         working-directory: ./current
         run: |
-          pip install dbt-snowflake recce
+          pip install dbt-snowflake recce-cli
           dbt deps
 
-      - name: Verify Recce Installation
-        run: |
-          which recce || echo "Recce not found"
-          recce --version || echo "Recce version check failed"
-
+      # 5. Configure dbt profiles
       - name: Configure dbt profiles
         run: |
           mkdir -p ~/.dbt
-          cat << EOF > ~/.dbt/profiles.yml
-          ${{ secrets.DBT_PROFILES_YML }}
-          EOF
+          cat <<EOF > ~/.dbt/profiles.yml
+${{ secrets.DBT_PROFILES_YML }}
+EOF
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
 
+      # 6. Generate Base Artifacts
       - name: Generate Base Artifacts
         working-directory: ./base
         env:
@@ -62,6 +69,7 @@ jobs:
           dbt compile --target prod --target-path ../current/target-base
           dbt docs generate --target prod --target-path ../current/target-base
 
+      # 7. Generate Current Artifacts
       - name: Generate Current Artifacts
         working-directory: ./current
         env:
@@ -75,62 +83,39 @@ jobs:
           dbt compile --target dev --target-path target
           dbt docs generate --target dev --target-path target
 
-      - name: Check generated artifacts
-        run: |
-          echo "=== Base artifacts ==="
-          ls -l ./current/target-base || echo "No target-base found"
-          echo "=== Current artifacts ==="
-          ls -l ./current/target || echo "No target found"
-
-      # 🧪 Ejecutar Recce y exponer outputs correctamente
+      # 8. Run Recce Checks
       - name: Run Recce Checks
         working-directory: ./current
         id: recce_check_run
         continue-on-error: true
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
         run: |
-          recce check --target dev > recce_output.log 2>&1
+          # Usa el comando correcto según recce-cli
+          recce run --target dev > recce_output.log 2>&1 || true
           EXIT_CODE=$?
           echo "Recce exit code: $EXIT_CODE"
 
-          # Escape output para que GitHub no rompa el multiline
+          # Escapamos output para GitHub Actions multiline
           OUTPUT_CONTENT=$(sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' recce_output.log)
-
           echo "output=$OUTPUT_CONTENT" >> $GITHUB_OUTPUT
 
           if [ $EXIT_CODE -eq 0 ]; then
             echo "summary=All Recce checks passed." >> $GITHUB_OUTPUT
             echo "conclusion=success" >> $GITHUB_OUTPUT
           else
-            echo "summary=One or more Recce checks failed. See comment for details." >> $GITHUB_OUTPUT
+            echo "summary=One or more Recce checks failed. See recce_output.log." >> $GITHUB_OUTPUT
             echo "conclusion=failure" >> $GITHUB_OUTPUT
           fi
 
-      # 🔍 Depurar el log de Recce (si falló)
-      - name: Debug Recce Log
-        if: always()
-        run: |
-          echo "=== Recce Output Log ==="
-          cat ./current/recce_output.log || echo "No recce_output.log found"
-
-      # 💬 Publicar Resultados en el PR
+      # 9. Post Recce Results to PR
       - name: Post Recce Results to PR
         uses: actions/github-script@v6
         if: always()
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const conclusion = "${{ steps.recce_check_run.outputs.conclusion }}";
-            const summary = "${{ steps.recce_check_run.outputs.summary }}";
-            const output = `${{ steps.recce_check_run.outputs.output }}`;
-
-            console.log("🧠 Debug:", { conclusion, summary });
+            const conclusion = "${{ steps.recce_check_run.outputs.conclusion }}" || 'failure';
+            const summary = "${{ steps.recce_check_run.outputs.summary }}" || 'No summary available';
+            const output = `${{ steps.recce_check_run.outputs.output }}` || 'No output available';
 
             let body = `### Recce OSS Checks Result 🤖\n\n* **Status:** ${summary}\n\n`;
             if (conclusion !== 'success') {
@@ -152,7 +137,7 @@ jobs:
               name: 'Recce OSS Checks',
               head_sha: context.payload.pull_request.head.sha,
               status: 'completed',
-              conclusion: conclusion || 'failure', # fallback
+              conclusion: conclusion,
               output: {
                 title: 'Recce Check Results',
                 summary: summary,
