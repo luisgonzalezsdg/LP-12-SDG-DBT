@@ -61,28 +61,42 @@ jobs:
         working-directory: ./current
         run: |
           set -x
-          # Debug DBT connection
           dbt debug
-          # Compile project (allow failure to continue)
           dbt compile --target dev --target-path target || true
-          # Generate nodes list if manifest exists
           if [ -f target/manifest.json ]; then
             jq '.nodes | keys' target/manifest.json > dbt_nodes.json
           fi
           ls -al target
 
-      # 7. Collect debug info
-      - name: Collect DBT Debug Info
+      # 7. Collect enhanced debug info
+      - name: Collect Enhanced DBT Debug Info
         working-directory: ./current
         run: |
           DEBUG_OUTPUT="dbt_debug.json"
           SUMMARY="{}"
 
-          if [ -f dbt_nodes.json ]; then
-            TOTAL_MODELS=$(jq '. | length' dbt_nodes.json)
-            SUMMARY=$(jq -n --arg total "$TOTAL_MODELS" '{total_models: $total|tonumber}')
+          if [ -f target/manifest.json ]; then
+            TOTAL_MODELS=$(jq '[.nodes[] | select(.resource_type=="model")] | length' target/manifest.json)
+            TOTAL_SOURCES=$(jq '[.sources[]] | length' target/manifest.json)
+            TOTAL_TESTS=$(jq '[.nodes[] | select(.resource_type=="test")] | length' target/manifest.json)
+            TOTAL_SEEDS=$(jq '[.nodes[] | select(.resource_type=="seed")] | length' target/manifest.json)
+            SAMPLE_MODELS=$(jq -r '[.nodes[] | select(.resource_type=="model") | .name] | .[:10] | join(", ")' target/manifest.json)
+
+            SUMMARY=$(jq -n \
+              --arg total_models "$TOTAL_MODELS" \
+              --arg total_sources "$TOTAL_SOURCES" \
+              --arg total_tests "$TOTAL_TESTS" \
+              --arg total_seeds "$TOTAL_SEEDS" \
+              --arg sample_models "$SAMPLE_MODELS" \
+              '{
+                total_models: ($total_models|tonumber),
+                total_sources: ($total_sources|tonumber),
+                total_tests: ($total_tests|tonumber),
+                total_seeds: ($total_seeds|tonumber),
+                sample_models: $sample_models
+              }')
           else
-            SUMMARY=$(jq -n '{error: "manifest.json or nodes list not found"}')
+            SUMMARY=$(jq -n '{error: "manifest.json not found"}')
           fi
 
           echo $SUMMARY > $DEBUG_OUTPUT
@@ -106,7 +120,11 @@ jobs:
                 if (parsed.error) {
                   body += `⚠️ Error: ${parsed.error}\n\n`;
                 } else {
-                  body += `- **Total Models in Project:** ${parsed.total_models || 'N/A'}\n`;
+                  body += `- **Total Models:** ${parsed.total_models}\n`;
+                  body += `- **Total Sources:** ${parsed.total_sources}\n`;
+                  body += `- **Total Tests:** ${parsed.total_tests}\n`;
+                  body += `- **Total Seeds:** ${parsed.total_seeds}\n`;
+                  body += `- **Sample Models:** ${parsed.sample_models}\n`;
                 }
               } else {
                 body += "⚠️ Debug file not found.\n";
