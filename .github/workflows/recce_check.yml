@@ -79,7 +79,11 @@ jobs:
 
           # Map changed files to DBT node names using manifest.json
           if [ -f target/manifest.json ] && [ -s changed_models.txt ]; then
-            CHANGED_NODES=$(jq -r --slurpfile files changed_models.txt \
+            # Convert changed_models.txt to JSON array
+            mapfile -t FILES < changed_models.txt
+            FILES_JSON=$(printf '%s\n' "${FILES[@]}" | jq -R . | jq -s .)
+
+            CHANGED_NODES=$(jq --argjson files "$FILES_JSON" \
               '[.nodes[] | select(.original_file_path as $p | $files | index($p)) | .name] | join(", ")' \
               target/manifest.json)
             echo "$CHANGED_NODES" > changed_nodes.txt
