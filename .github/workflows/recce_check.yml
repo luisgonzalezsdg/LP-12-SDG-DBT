@@ -1,17 +1,16 @@
-name: Recce Diff on PR
+name: PR DBT Debug Info
 
 on:
   pull_request:
     branches:
-      - main  # Or 'develop' if that's your integration branch
+      - main  # or your main integration branch
 
 permissions:
   contents: read
   pull-requests: write
-  checks: write
 
 jobs:
-  recce_diff:
+  dbt_debug:
     runs-on: ubuntu-latest
     steps:
       # 1. Checkout Base Branch
@@ -19,15 +18,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.base_ref }}
-          path: 'base'
+          path: base
 
       # 2. Checkout PR Branch
       - name: Checkout PR Branch
         uses: actions/checkout@v4
         with:
-          path: 'current'
+          path: current
 
-      # 3. Set up Python
+      # 3. Setup Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -37,16 +36,15 @@ jobs:
       - name: Install dependencies
         working-directory: ./current
         run: |
-          pip install dbt-snowflake recce
-          dbt deps
+          pip install dbt-snowflake
 
-      # 5. Create profiles.yml using secrets
+      # 5. Create dbt profiles.yml
       - name: Configure dbt profiles
         run: |
           mkdir -p ~/.dbt
-          cat << EOF > ~/.dbt/profiles.yml
-          ${{ secrets.DBT_PROFILES_YML }}
-          EOF
+          cat <<EOF > ~/.dbt/profiles.yml
+${{ secrets.DBT_PROFILES_YML }}
+EOF
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -54,153 +52,67 @@ jobs:
           SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
           SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-          SNOWFLAKE_SCHEMA_DEV: 'DEV'
-          SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ'
 
-      # 6. Generate Base Artifacts
-      - name: Generate Base Artifacts
-        working-directory: ./base
-        # --- ✅ ADDED ENV BLOCK HERE ---
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-          SNOWFLAKE_SCHEMA_DEV: 'DEV'
-          SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ'
-        # --- END OF ADDED BLOCK ---
-        run: |
-          echo "Compiling base..."
-          dbt compile --target prod --target-path ../current/target-base
-          echo "Generating base docs..."
-          dbt docs generate --target prod --target-path ../current/target-base
-
-      # 7. Generate Current Artifacts
-      - name: Generate Current Artifacts
+      # 6. Compile DBT project
+      - name: Compile DBT Project
         working-directory: ./current
-        # --- ✅ ADDED ENV BLOCK HERE ---
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-          SNOWFLAKE_SCHEMA_DEV: 'DEV'
-          SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ'
-        # --- END OF ADDED BLOCK ---
-        run: |
-          echo "Compiling current..."
-          dbt compile --target dev --target-path target
-          echo "Generating current docs..."
-          dbt docs generate --target dev --target-path target
-
-      # 8. Run Recce Diff and capture output
-      - name: Run Recce Diff
-        working-directory: ./current
-        id: recce_run
-        continue-on-error: true
         run: |
           set +e
-      
-          # Capture both stdout and stderr, specify correct target path
-          recce run --target dev --target-path target --output json > recce_results.json 2>&1
-          EXIT_CODE=$?
-          echo "Recce exit code: $EXIT_CODE"
-      
-          echo "----- Recce Output Preview -----"
-          head -n 20 recce_results.json || echo "No output"
-          echo "--------------------------------"
-      
-          if ! jq . recce_results.json > /dev/null 2>&1; then
-            echo "recce_results.json does not contain valid JSON. Recce likely failed."
-            EXIT_CODE=2
-            echo '{"summary": null, "error": "Recce failed to produce valid JSON output. Check recce_results.json for debug logs."}' > recce_results.json
+          echo "Compiling DBT project..."
+          dbt compile --target dev --target-path target
+          echo "Listing models in manifest..."
+          if [ -f target/manifest.json ]; then
+            cat target/manifest.json | jq '.nodes | keys' > dbt_nodes.json
           fi
-      
-          if [ $EXIT_CODE -eq 0 ]; then
-            echo "summary=Recce found no differences." >> $GITHUB_OUTPUT
-            echo "conclusion=success" >> $GITHUB_OUTPUT
-          elif [ $EXIT_CODE -eq 1 ]; then
-            echo "summary=Recce found differences!" >> $GITHUB_OUTPUT
-            echo "conclusion=failure" >> $GITHUB_OUTPUT
+
+      # 7. Collect debug info
+      - name: Collect DBT Debug Info
+        working-directory: ./current
+        run: |
+          set +e
+          DEBUG_OUTPUT="dbt_debug.json"
+          SUMMARY="{}"
+
+          if [ -f dbt_nodes.json ]; then
+            TOTAL_MODELS=$(jq '. | length' dbt_nodes.json)
+            SUMMARY=$(jq -n --arg total "$TOTAL_MODELS" '{total_models: $total|tonumber}')
           else
-            echo "summary=Recce execution failed (Exit Code: $EXIT_CODE). Check logs." >> $GITHUB_OUTPUT
-            echo "conclusion=failure" >> $GITHUB_OUTPUT
+            SUMMARY=$(jq -n '{error: "manifest.json or nodes list not found"}')
           fi
-      
-          exit 0
 
+          echo $SUMMARY > $DEBUG_OUTPUT
+          head -n 20 $DEBUG_OUTPUT
 
-
-
-      # 9. Post Recce Results to PR
-      - name: Post Recce Results to PR
+      # 8. Post PR comment
+      - name: Post Debug Info to PR
         uses: actions/github-script@v6
-        
-        if: always() # Always run to report status
+        if: always()
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            const recceOutputFile = './current/recce_results.json';
-            let body = '### Recce Diff Results 🤖\n\n';
-            // Get conclusion and summary directly from the previous step's outputs
-            let conclusion = '${{ steps.recce_run.outputs.conclusion }}' || 'failure'; // Default to failure
-            let summary = '${{ steps.recce_run.outputs.summary }}' || 'Recce check failed or status unknown.';
-
-            body += `*Check Result: ${summary}*\n\n`; // Add summary first
-
-            // Try to add details ONLY if the file exists and looks like JSON
-            let detailsAdded = false;
+            const debugFile = './current/dbt_debug.json';
+            let body = '### DBT Debug Info 🤖\n\n';
+            
             try {
-              if (fs.existsSync(recceOutputFile)) {
-                const fileContent = fs.readFileSync(recceOutputFile, 'utf8');
-                // Basic check if it looks like JSON before parsing
-                if (fileContent && fileContent.trim().startsWith('{')) {
-                  const results = JSON.parse(fileContent);
-                  if (results && results.summary) {
-                     body += `- **Models Checked:** ${results.summary.total || 'N/A'}\n`;
-                     body += `- **Models with Diff:** ${results.summary.modified || 0}\n`;
-                     body += `- **Models Added:** ${results.summary.added || 0}\n`;
-                     body += `- **Models Removed:** ${results.summary.removed || 0}\n\n`;
-                     detailsAdded = true;
-                  }
-                  // Optionally add a link if recce output provides one
-                  if (results && results.report_url) {
-                      body += `[View Full Report](${results.report_url})\n`;
-                  }
+              if (fs.existsSync(debugFile)) {
+                const content = fs.readFileSync(debugFile, 'utf8');
+                const parsed = JSON.parse(content);
+                if (parsed.error) {
+                  body += `⚠️ Error: ${parsed.error}\n\n`;
+                } else {
+                  body += `- **Total Models in Project:** ${parsed.total_models || 'N/A'}\n`;
                 }
+              } else {
+                body += "⚠️ Debug file not found.\n";
               }
-            } catch (error) {
-              console.error(`Error processing Recce results file: ${error}`);
-              // Don't overwrite the main summary if JSON processing fails
+            } catch (err) {
+              body += `⚠️ Failed to parse debug info: ${err.message}\n`;
             }
 
-            if (!detailsAdded && conclusion !== 'success') {
-               body += `Could not parse detailed results from recce_results.json. Check Action logs.\n`;
-            }
-
-            // Post Comment
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: body
+              body
             });
-
-            // Create/Update Status Check using step outputs
-            github.rest.checks.create({
-               owner: context.repo.owner,
-               repo: context.repo.repo,
-               name: 'Recce Diff Check',
-               head_sha: context.payload.pull_request.head.sha,
-               status: 'completed',
-               conclusion: conclusion,
-               output: {
-                 title: 'Recce Diff Results',
-                 summary: summary
-               }
-             });
