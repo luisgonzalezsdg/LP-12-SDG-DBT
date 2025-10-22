@@ -3,7 +3,7 @@ name: Recce Diff on PR
 on:
   pull_request:
     branches:
-      - main  # O 'develop' si es tu rama de integración
+      - main  # Or 'develop' if that's your integration branch
 
 permissions:
   contents: read
@@ -14,33 +14,33 @@ jobs:
   recce_diff:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout del código BASE (la rama a la que va el PR, ej: main)
+      # 1. Checkout Base Branch
       - name: Checkout Base Branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.base_ref }}
           path: 'base'
 
-      # 2. Checkout del código ACTUAL (la rama del PR)
+      # 2. Checkout PR Branch
       - name: Checkout PR Branch
         uses: actions/checkout@v4
         with:
           path: 'current'
 
-      # 3. Configurar Python
+      # 3. Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      # 4. Instalar dependencias
+      # 4. Install dependencies
       - name: Install dependencies
         working-directory: ./current
         run: |
           pip install dbt-snowflake recce
           dbt deps
 
-      # 5. Crear profiles.yml usando secretos de GitHub
+      # 5. Create profiles.yml using secrets
       - name: Configure dbt profiles
         run: |
           mkdir -p ~/.dbt
@@ -57,31 +57,53 @@ jobs:
           SNOWFLAKE_SCHEMA_DEV: 'DEV'
           SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ'
 
-      # 6. Generar artefactos BASE (usando el código 'base' y target 'prod')
+      # 6. Generate Base Artifacts
       - name: Generate Base Artifacts
         working-directory: ./base
+        # --- ✅ ADDED ENV BLOCK HERE ---
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA_DEV: 'DEV'
+          SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ'
+        # --- END OF ADDED BLOCK ---
         run: |
           echo "Compiling base..."
           dbt compile --target prod --target-path ../current/target-base
           echo "Generating base docs..."
           dbt docs generate --target prod --target-path ../current/target-base
 
-      # 7. Generar artefactos ACTUALES (usando el código 'current' y target 'dev')
+      # 7. Generate Current Artifacts
       - name: Generate Current Artifacts
         working-directory: ./current
+        # --- ✅ ADDED ENV BLOCK HERE ---
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA_DEV: 'DEV'
+          SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ'
+        # --- END OF ADDED BLOCK ---
         run: |
           echo "Compiling current..."
           dbt compile --target dev --target-path target
           echo "Generating current docs..."
           dbt docs generate --target dev --target-path target
 
-      # 8. Ejecutar Recce Diff y capturar el resultado
+      # 8. Run Recce Diff and capture output
       - name: Run Recce Diff
         working-directory: ./current
         id: recce_run
-        continue-on-error: true # Continúa aunque recce encuentre diferencias (exit code 1)
+        continue-on-error: true # Continue even if recce finds diffs (exit code 1) or fails
         run: |
-          # Ejecuta 'recce run' para comparar y guarda el resultado en un archivo JSON
+          # Run recce, output JSON to a file
           recce run --target dev --output json --no-browser > recce_results.json
           EXIT_CODE=$?
           echo "Recce exit code: $EXIT_CODE"
@@ -90,22 +112,23 @@ jobs:
             echo "conclusion=success" >> $GITHUB_OUTPUT
           elif [ $EXIT_CODE -eq 1 ]; then
             echo "summary=Recce found differences!" >> $GITHUB_OUTPUT
-            echo "conclusion=failure" >> $GITHUB_OUTPUT
+            echo "conclusion=failure" >> $GITHUB_OUTPUT # Treat diffs as failure for PR check
           else
             echo "summary=Recce execution failed (Exit Code: $EXIT_CODE). Check logs." >> $GITHUB_OUTPUT
             echo "conclusion=failure" >> $GITHUB_OUTPUT
           fi
 
-      # 9. Publicar los resultados de Recce en el Pull Request
+      # 9. Post Recce Results to PR
       - name: Post Recce Results to PR
         uses: actions/github-script@v6
-        if: always() # Se ejecuta siempre para reportar el estado, incluso si el paso anterior falló
+        if: always() # Always run to report status
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
             const recceOutputFile = './current/recce_results.json';
             let body = '### Recce Diff Results 🤖\n\n';
+            // Use the outputs set in the previous step
             let conclusion = '${{ steps.recce_run.outputs.conclusion }}' || 'failure';
             let summary = '${{ steps.recce_run.outputs.summary }}' || 'Recce check failed to produce output.';
 
@@ -118,8 +141,17 @@ jobs:
                    body += `- **Models Added:** ${results.summary.added || 0}\n`;
                    body += `- **Models Removed:** ${results.summary.removed || 0}\n\n`;
                 }
+                 // Add the summary message determined in the previous step
+                body += `*Result: ${summary}*\n`;
+                // Optionally add a link if recce output provides one (adjust property name if needed)
+                if (results && results.report_url) {
+                    body += `[View Full Report](${results.report_url})\n`;
+                } else if (conclusion !== 'success') {
+                    body += `Check Action logs for details.\n`;
+                }
+
               } else {
-                 body += `Recce output file not found. ${summary}\n Check Action logs.\n`;
+                 body += `Recce output file (${recceOutputFile}) not found. ${summary}\n Check Action logs.\n`;
                  conclusion = 'failure';
               }
             } catch (error) {
@@ -128,7 +160,7 @@ jobs:
               conclusion = 'failure';
             }
 
-            // Publica el comentario en el PR
+            // Post Comment
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -136,7 +168,7 @@ jobs:
               body: body
             });
 
-            // Crea o actualiza el "Status Check" en el PR
+            // Create/Update Status Check using step outputs
             github.rest.checks.create({
                owner: context.repo.owner,
                repo: context.repo.repo,
