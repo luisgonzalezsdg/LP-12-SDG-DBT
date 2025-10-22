@@ -104,7 +104,8 @@ jobs:
         continue-on-error: true # Continue even if recce finds diffs (exit code 1) or fails
         run: |
           # Run recce, output JSON to a file
-          recce run --target dev --output json --no-browser > recce_results.json
+          # REMOVED --no-browser option
+          recce run --target dev --output json > recce_results.json
           EXIT_CODE=$?
           echo "Recce exit code: $EXIT_CODE"
           if [ $EXIT_CODE -eq 0 ]; then
