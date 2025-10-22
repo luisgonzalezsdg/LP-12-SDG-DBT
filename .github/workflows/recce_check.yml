@@ -97,36 +97,36 @@ jobs:
           echo "Generating current docs..."
           dbt docs generate --target dev --target-path target
 
-# 8. Run Recce Diff and capture output
+      # 8. Run Recce Diff and capture output
       - name: Run Recce Diff
         working-directory: ./current
         id: recce_run
-        continue-on-error: true # Continue even if recce finds diffs (exit code 1) or fails
+        continue-on-error: true
         run: |
-          # Run recce, output JSON to file, discard stderr from file redirection
           recce run --target dev --output json > recce_results.json 2>/dev/null
           EXIT_CODE=$?
           echo "Recce exit code: $EXIT_CODE"
-          # Check if the results file is valid JSON before proceeding
+      
           if ! jq . recce_results.json > /dev/null 2>&1; then
-             echo "recce_results.json does not contain valid JSON. Recce likely failed."
-             # Force failure conclusion if JSON is invalid
-             EXIT_CODE=2 # Use a generic failure code
-             # Overwrite the file with minimal error JSON for the next step
-             echo '{"summary": null, "error": "Recce failed to produce valid JSON output"}' > recce_results.json
+            echo "recce_results.json does not contain valid JSON. Recce likely failed."
+            EXIT_CODE=2
+            echo '{"summary": null, "error": "Recce failed to produce valid JSON output"}' > recce_results.json
           fi
-
-          # Set outputs based on the potentially updated EXIT_CODE
+      
           if [ $EXIT_CODE -eq 0 ]; then
             echo "summary=Recce found no differences." >> $GITHUB_OUTPUT
             echo "conclusion=success" >> $GITHUB_OUTPUT
           elif [ $EXIT_CODE -eq 1 ]; then
             echo "summary=Recce found differences!" >> $GITHUB_OUTPUT
-            echo "conclusion=failure" >> $GITHUB_OUTPUT # Treat diffs as failure
+            echo "conclusion=failure" >> $GITHUB_OUTPUT
           else
             echo "summary=Recce execution failed (Exit Code: $EXIT_CODE). Check logs." >> $GITHUB_OUTPUT
             echo "conclusion=failure" >> $GITHUB_OUTPUT
           fi
+      
+          # ✅ Always exit 0 so GitHub doesn't mark this step as failed
+          exit 0
+
       # 9. Post Recce Results to PR
       - name: Post Recce Results to PR
         uses: actions/github-script@v6
