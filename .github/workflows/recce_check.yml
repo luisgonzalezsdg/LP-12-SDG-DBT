@@ -42,9 +42,7 @@ jobs:
       - name: Configure dbt profiles
         run: |
           mkdir -p ~/.dbt
-          cat <<EOF > ~/.dbt/profiles.yml
-          ${{ secrets.DBT_PROFILES_YML }}
-          EOF
+          echo "${{ secrets.DBT_PROFILES_YML }}" > ~/.dbt/profiles.yml
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
