@@ -22,6 +22,7 @@ jobs:
       SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
       SNOWFLAKE_SCHEMA_DEV: 'DEV'
       SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ' # o tu schema de prod
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DBT_CURRENT_TARGET: 'dev'
 
     steps:
@@ -87,7 +88,7 @@ jobs:
       # --- Ejecutar Recce ---
       - name: Run Recce CI
         run: |
-          recce run --github-pull-request-url ${{ github.event.pull_request.html_url }}
+          recce run --github-pull-request-url ${{ github.event.pull_request.html_url }} --comment-on-pr
 
       # --- Subir artefactos ---
       - name: Upload DBT Artifacts
