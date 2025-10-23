@@ -88,7 +88,8 @@ jobs:
       # --- Ejecutar Recce ---
       - name: Run Recce CI
         run: |
-          recce run --github-pull-request-url ${{ github.event.pull_request.html_url }} --comment-on-pr
+            recce run --github-pull-request-url ${{ github.event.pull_request.html_url }}
+
 
       # --- Subir artefactos ---
       - name: Upload DBT Artifacts
