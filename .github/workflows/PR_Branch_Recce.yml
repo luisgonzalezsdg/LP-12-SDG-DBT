@@ -95,17 +95,6 @@ jobs:
         run: |
             recce run --github-pull-request-url ${{ github.event.pull_request.html_url }}
 
-      - name: Debug Recce state
-        run: |
-          echo "PWD: $(pwd)"
-          ls -al
-          if [ -f recce_state.json ]; then
-            echo "Found recce_state.json"
-            cat recce_state.json | head -n 20
-          else
-            echo "recce_state.json not found"
-          fi
-
 
      # --- Escribir comentario en PR ---
       - name: Post Recce state to PR
@@ -116,36 +105,34 @@ jobs:
           script: |
             const fs = require('fs');
             const path = require('path');
-            // Asegúrate de apuntar a la ruta donde se generó recce_state.json
             const stateFile = path.join(process.cwd(), 'recce_state.json');
             let body = '### Recce CI Report 🤖\n\n';
       
             if (fs.existsSync(stateFile)) {
               const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-      
-              // Recce genera un objeto con "results" para cada preset check
-              if (state.results && state.results.length > 0) {
-                state.results.forEach(r => {
-                  body += `- **${r.name}**: ${r.status}\n`;
-                  if (r.details) {
-                    // Opcional: incluir detalles del check
-                    body += `  - ${r.details}\n`;
+              
+              // Usamos "checks" porque "results" no existe en esta versión de Recce
+              if (state.checks && state.checks.length > 0) {
+                state.checks.forEach(c => {
+                  body += `- **${c.name}**: ${c.status || 'finished'}\n`;
+                  if (c.description) {
+                    body += `  - ${c.description}\n`;
                   }
                 });
               } else {
-                body += '⚠️ No results found in recce_state.json\n';
+                body += '⚠️ No checks found in recce_state.json\n';
               }
             } else {
               body += '⚠️ recce_state.json not found\n';
             }
       
-            // Publica comentario en el PR actual
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
               body
             });
+
 
 
       # --- Subir artefactos ---
