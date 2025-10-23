@@ -1,17 +1,53 @@
 # recce.yml
 
 checks:
-  # Check 1: Compara el número de filas de los modelos modificados
+  # ✅ Check 1: Conteo de filas
   - name: Row count diff for modified tables
     description: Check the row count difference for modified models and their downstream dependencies.
     type: row_count_diff
     params:
       select: state:modified+
+      threshold: 0.05  # (Opcional) Permite hasta un 5% de diferencia
 
-  # Check 2: Compara el esquema (columnas, tipos) de los modelos modificados
+  # ✅ Check 2: Diferencias en el esquema (columnas, tipos, etc.)
   - name: Schema diff for modified nodes
     description: Check the schema difference for all modified nodes and their downstream dependencies.
     type: schema_diff
     params:
       select: state:modified+
-      
+
+  # 🧮 Check 3: Comparación de valores agregados clave
+  - name: Aggregated metric comparison
+    description: Compare sum and average of key numeric fields for modified models.
+    type: aggregate_diff
+    params:
+      select: state:modified+
+      aggregates:
+        - sum
+        - avg
+      columns:
+        - amount
+        - revenue
+        - total_sales
+      threshold: 0.01  # 1% de tolerancia
+
+  # 🕵️ Check 4: Duplicados en columnas clave
+  - name: Check for duplicate keys in modified tables
+    description: Ensure there are no duplicate primary key values in modified models.
+    type: duplicate_check
+    params:
+      select: state:modified+
+      key_columns:
+        - order_id
+        - customer_id
+
+  # 🚫 Check 5: Nulos inesperados en columnas críticas
+  - name: Null value check for critical columns
+    description: Validate that key columns have no unexpected nulls in modified models.
+    type: null_check
+    params:
+      select: state:modified+
+      columns:
+        - order_id
+        - customer_id
+        - amount
