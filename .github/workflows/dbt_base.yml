@@ -42,9 +42,12 @@ jobs:
       - name: Configure dbt profiles
         run: |
           mkdir -p ~/.dbt
-          printf "%s" "${{ secrets.DBT_PROFILES_YML }}" > ~/.dbt/profiles.yml
+          cat << 'EOF' > ~/.dbt/profiles.yml
+          ${{ secrets.DBT_PROFILES_YML }}
+          EOF
           echo "profiles.yml created:"
           cat ~/.dbt/profiles.yml
+
 
       # --- FIN DEL PASO AÑADIDO ---
 
