@@ -8,6 +8,11 @@ concurrency:
   group: recce-ci-pr
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: write
+
+
 jobs:
   check-pull-request:
     name: Check pull request by Recce CI
@@ -22,6 +27,7 @@ jobs:
       SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
       SNOWFLAKE_SCHEMA_DEV: 'DEV'
       SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ' # o tu schema de prod
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DBT_CURRENT_TARGET: 'dev'
 
     steps:
@@ -55,19 +61,24 @@ jobs:
           gh repo set-default ${{ github.repository }}
           base_branch=${{ github.event.pull_request.base.ref }}
           echo "Base branch: $base_branch"
-
+      
+          # Limpiar carpeta target-base si existe
+          rm -rf target-base
+          mkdir -p target-base
+      
           run_id=$(gh run list --workflow "${WORKFLOW_BASE}" --branch "$base_branch" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-
+      
           if [ -z "$run_id" ]; then
             echo "❌ No se encontró un run exitoso del workflow base en la rama '$base_branch'"
             exit 1
           fi
-
+      
           echo "⬇️ Descargando artefactos del run $run_id"
           gh run download "$run_id" -n target-prod -D target-base
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_BASE: "dbt_base.yml" 
+          WORKFLOW_BASE: "dbt_base.yml"
+
 
       # --- Ejecutar dbt en la rama del PR ---
       - name: Prepare dbt Current environment
@@ -82,7 +93,47 @@ jobs:
       # --- Ejecutar Recce ---
       - name: Run Recce CI
         run: |
-          recce run --github-pull-request-url ${{ github.event.pull_request.html_url }}
+            recce run --github-pull-request-url ${{ github.event.pull_request.html_url }}
+
+
+     # --- Escribir comentario en PR ---
+      - name: Post Recce state to PR
+        uses: actions/github-script@v6
+        if: always()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const stateFile = path.join(process.cwd(), 'recce_state.json');
+            let body = '### Recce CI Report 🤖\n\n';
+      
+            if (fs.existsSync(stateFile)) {
+              const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+              
+              // Usamos "checks" porque "results" no existe en esta versión de Recce
+              if (state.checks && state.checks.length > 0) {
+                state.checks.forEach(c => {
+                  body += `- **${c.name}**: ${c.status || 'finished'}\n`;
+                  if (c.description) {
+                    body += `  - ${c.description}\n`;
+                  }
+                });
+              } else {
+                body += '⚠️ No checks found in recce_state.json\n';
+              }
+            } else {
+              body += '⚠️ recce_state.json not found\n';
+            }
+      
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
+
+
 
       # --- Subir artefactos ---
       - name: Upload DBT Artifacts
