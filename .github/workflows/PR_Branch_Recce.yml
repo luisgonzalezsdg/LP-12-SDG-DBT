@@ -71,7 +71,7 @@ jobs:
           gh run download "$run_id" -n target-prod -D target-base
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_BASE: "recce_ci_base.yml"
+          WORKFLOW_BASE: "dbt_base.yml"
 
 
       # --- Ejecutar dbt en la rama del PR ---
