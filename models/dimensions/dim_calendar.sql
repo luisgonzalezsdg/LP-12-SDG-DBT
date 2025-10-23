@@ -10,6 +10,9 @@ select distinct
     coalesce(
         try_to_date(trim(PERIOD)::string, 'YYYY-MM'),
         try_to_date(trim(PERIOD)::string || '-01', 'YYYY-MM-DD')
-    ) as period
+
+    ) as period,
+    current_timestamp() as recce_debug_col
+
 from {{ ref('dataset') }}
 where PERIOD is not null
