@@ -1,17 +1,56 @@
 # recce.yml
 
 checks:
-  # Check 1: Compara el número de filas de los modelos modificados
+  # ✅ Check 1: Diferencias en número de filas
   - name: Row count diff for modified tables
     description: Check the row count difference for modified models and their downstream dependencies.
     type: row_count_diff
     params:
       select: state:modified+
+      threshold: 0.05
 
-  # Check 2: Compara el esquema (columnas, tipos) de los modelos modificados
+  # ✅ Check 2: Diferencias en el esquema
   - name: Schema diff for modified nodes
     description: Check the schema difference for all modified nodes and their downstream dependencies.
     type: schema_diff
     params:
       select: state:modified+
-      
+
+  # ✅ Check 3: Comparar agregados (SUM, AVG)
+  - name: Aggregated metric comparison
+    description: Compare aggregate metrics (SUM, AVG) between base and current datasets.
+    type: query_diff
+    params:
+      select: state:modified+
+      sql_template: |
+        SELECT
+          '{{ model_name }}' AS model,
+          SUM(amount) AS sum_amount,
+          AVG(amount) AS avg_amount
+        FROM {{ this }}
+
+  # ✅ Check 4: Detectar duplicados
+  - name: Duplicate key check
+    description: Detect duplicate primary key combinations in modified tables.
+    type: query_diff
+    params:
+      select: state:modified+
+      sql_template: |
+        SELECT
+          '{{ model_name }}' AS model,
+          COUNT(*) - COUNT(DISTINCT order_id) AS duplicate_rows
+        FROM {{ this }}
+
+  # ✅ Check 5: Detección de nulos
+  - name: Null value check
+    description: Detect unexpected nulls in critical columns.
+    type: query_diff
+    params:
+      select: state:modified+
+      sql_template: |
+        SELECT
+          '{{ model_name }}' AS model,
+          SUM(CASE WHEN order_id IS NULL THEN 1 ELSE 0 END) AS null_order_id,
+          SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END) AS null_customer_id,
+          SUM(CASE WHEN amount IS NULL THEN 1 ELSE 0 END) AS null_amount
+        FROM {{ this }}
