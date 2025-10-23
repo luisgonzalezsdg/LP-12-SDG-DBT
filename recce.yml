@@ -1,53 +1,56 @@
 # recce.yml
 
 checks:
-  # ✅ Check 1: Conteo de filas
+  # ✅ Check 1: Diferencias en número de filas
   - name: Row count diff for modified tables
     description: Check the row count difference for modified models and their downstream dependencies.
     type: row_count_diff
     params:
       select: state:modified+
-      threshold: 0.05  # (Opcional) Permite hasta un 5% de diferencia
+      threshold: 0.05  # tolerancia opcional
 
-  # ✅ Check 2: Diferencias en el esquema (columnas, tipos, etc.)
+  # ✅ Check 2: Diferencias en el esquema
   - name: Schema diff for modified nodes
     description: Check the schema difference for all modified nodes and their downstream dependencies.
     type: schema_diff
     params:
       select: state:modified+
 
-  # 🧮 Check 3: Comparación de valores agregados clave
+  # ✅ Check 3: Diferencias en agregados numéricos (usando query_diff)
   - name: Aggregated metric comparison
-    description: Compare sum and average of key numeric fields for modified models.
-    type: aggregate_diff
+    description: Compare aggregate metrics (SUM, AVG) between base and current datasets.
+    type: query_diff
     params:
       select: state:modified+
-      aggregates:
-        - sum
-        - avg
-      columns:
-        - amount
-        - revenue
-        - total_sales
-      threshold: 0.01  # 1% de tolerancia
+      query: |
+        SELECT
+          '{{ model_name }}' AS model,
+          SUM(amount) AS sum_amount,
+          AVG(amount) AS avg_amount
+        FROM {{ this }}
 
-  # 🕵️ Check 4: Duplicados en columnas clave
-  - name: Check for duplicate keys in modified tables
-    description: Ensure there are no duplicate primary key values in modified models.
-    type: duplicate_check
+  # ✅ Check 4: Detectar duplicados por claves (usando query_diff)
+  - name: Duplicate key check
+    description: Detect duplicate primary key combinations in modified tables.
+    type: query_diff
     params:
       select: state:modified+
-      key_columns:
-        - order_id
-        - customer_id
+      query: |
+        SELECT
+          '{{ model_name }}' AS model,
+          COUNT(*) - COUNT(DISTINCT order_id) AS duplicate_rows
+        FROM {{ this }}
 
-  # 🚫 Check 5: Nulos inesperados en columnas críticas
-  - name: Null value check for critical columns
-    description: Validate that key columns have no unexpected nulls in modified models.
-    type: null_check
+  # ✅ Check 5: Detección de nulos en columnas críticas
+  - name: Null value check
+    description: Detect unexpected nulls in critical columns.
+    type: query_diff
     params:
       select: state:modified+
-      columns:
-        - order_id
-        - customer_id
-        - amount
+      query: |
+        SELECT
+          '{{ model_name }}' AS model,
+          SUM(CASE WHEN order_id IS NULL THEN 1 ELSE 0 END) AS null_order_id,
+          SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END) AS null_customer_id,
+          SUM(CASE WHEN amount IS NULL THEN 1 ELSE 0 END) AS null_amount
+        FROM {{ this }}
