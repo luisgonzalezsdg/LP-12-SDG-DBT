@@ -96,8 +96,11 @@ jobs:
             recce run --github-pull-request-url ${{ github.event.pull_request.html_url }}
 
 
+
+
      # --- Escribir comentario en PR ---
-      - name: Post Recce state to PR
+      # --- NUEVO: publicar resultados reales en PR ---
+      - name: Post Recce results to PR
         uses: actions/github-script@v6
         if: always()
         with:
@@ -110,17 +113,39 @@ jobs:
       
             if (fs.existsSync(stateFile)) {
               const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-              
-              // Usamos "checks" porque "results" no existe en esta versión de Recce
-              if (state.checks && state.checks.length > 0) {
-                state.checks.forEach(c => {
-                  body += `- **${c.name}**: ${c.status || 'finished'}\n`;
-                  if (c.description) {
-                    body += `  - ${c.description}\n`;
+      
+              if (state.runs && state.runs.length > 0) {
+                state.runs.forEach(r => {
+                  const check = state.checks.find(c => c.check_id === r.check_id);
+                  const name = check?.name || r.name;
+      
+                  // Mostrar si hay diferencias reales
+                  let diffText = '✅ No differences';
+                  if (r.result && Object.keys(r.result).length > 0) {
+                    diffText = '❌ Differences found';
+      
+                    // Si es row_count_diff, mostrar un resumen legible
+                    if (r.type === 'row_count_diff') {
+                      const rows = Object.entries(r.result).map(([table, v]) => {
+                        const change = v.expected !== undefined && v.actual !== undefined
+                          ? `+${v.actual - v.expected} rows`
+                          : '';
+                        return `${table}: ${change}`;
+                      }).join('; ');
+                      body += `- **${name}**: ${diffText}\n  - ${rows}\n`;
+                      return;
+                    }
+      
+                    // Para otros tipos de checks, mostrar detalles JSON
+                    body += `- **${name}**: ${diffText}\n  - Details: ${JSON.stringify(r.result)}\n`;
+                    return;
                   }
+      
+                  // Si no hay diferencias
+                  body += `- **${name}**: ${diffText}\n`;
                 });
               } else {
-                body += '⚠️ No checks found in recce_state.json\n';
+                body += '⚠️ No runs found in recce_state.json\n';
               }
             } else {
               body += '⚠️ recce_state.json not found\n';
