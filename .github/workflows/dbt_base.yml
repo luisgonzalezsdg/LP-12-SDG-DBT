@@ -28,12 +28,11 @@ jobs:
       SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ' # O tu schema de producción
 
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v2 # Considera usar @v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.10.x" # Considera usar 3.11 si tus paquetes lo soportan
+          python-version: "3.10"
+
 
       - name: Install dependencies
         run: |
@@ -43,11 +42,10 @@ jobs:
       - name: Configure dbt profiles
         run: |
           mkdir -p ~/.dbt
-          # Usa el secreto DBT_PROFILES_YML para crear el archivo
-          # Este secreto DEBE contener las referencias a env_var()
-          echo "${{ secrets.DBT_PROFILES_YML }}" > ~/.dbt/profiles.yml
+          printf "%s" "${{ secrets.DBT_PROFILES_YML }}" > ~/.dbt/profiles.yml
           echo "profiles.yml created:"
-          cat ~/.dbt/profiles.yml # Imprime el contenido para verificar
+          cat ~/.dbt/profiles.yml
+
       # --- FIN DEL PASO AÑADIDO ---
 
       - name: Run DBT
