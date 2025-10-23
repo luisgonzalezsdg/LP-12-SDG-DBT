@@ -93,9 +93,8 @@ jobs:
       # --- Ejecutar Recce ---
       - name: Run Recce CI
         run: |
-            recce run \
-            --github-pull-request-url ${{ github.event.pull_request.html_url }} \
-            --dbt-base-target target-base
+            recce run --github-pull-request-url ${{ github.event.pull_request.html_url }}
+
 
 
 
