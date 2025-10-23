@@ -55,19 +55,24 @@ jobs:
           gh repo set-default ${{ github.repository }}
           base_branch=${{ github.event.pull_request.base.ref }}
           echo "Base branch: $base_branch"
-
+      
+          # Limpiar carpeta target-base si existe
+          rm -rf target-base
+          mkdir -p target-base
+      
           run_id=$(gh run list --workflow "${WORKFLOW_BASE}" --branch "$base_branch" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-
+      
           if [ -z "$run_id" ]; then
             echo "❌ No se encontró un run exitoso del workflow base en la rama '$base_branch'"
             exit 1
           fi
-
+      
           echo "⬇️ Descargando artefactos del run $run_id"
           gh run download "$run_id" -n target-prod -D target-base
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_BASE: "dbt_base.yml" 
+          WORKFLOW_BASE: "recce_ci_base.yml"
+
 
       # --- Ejecutar dbt en la rama del PR ---
       - name: Prepare dbt Current environment
