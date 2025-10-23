@@ -3,7 +3,7 @@ models:
     description: "Calendar dimension. It contains a unique row for each period (month) present in the data."
     config:
       contract:
-        enforced: false
+        enforced: true
 
     columns:
       - name: period
