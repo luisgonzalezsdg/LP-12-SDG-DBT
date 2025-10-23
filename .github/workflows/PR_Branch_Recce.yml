@@ -1,0 +1,99 @@
+name: Recce CI PR Branch
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: recce-ci-pr
+  cancel-in-progress: true
+
+jobs:
+  check-pull-request:
+    name: Check pull request by Recce CI
+    runs-on: ubuntu-latest
+
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+      SNOWFLAKE_SCHEMA_DEV: 'DEV'
+      SNOWFLAKE_SCHEMA_PROD: 'DBT_LGONZALEZ' # o tu schema de prod
+      DBT_CURRENT_TARGET: 'dev'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install dbt-snowflake recce
+
+      # --- Crear archivo profiles.yml ---
+      - name: Configure dbt profiles
+        run: |
+          mkdir -p ~/.dbt
+          cat << 'EOF' > ~/.dbt/profiles.yml
+          ${{ secrets.DBT_PROFILES_YML }}
+          EOF
+          echo "profiles.yml created:"
+          cat ~/.dbt/profiles.yml
+
+      # --- Descargar artefactos del workflow base ---
+      - name: Prepare dbt Base environment
+        run: |
+          gh repo set-default ${{ github.repository }}
+          base_branch=${{ github.event.pull_request.base.ref }}
+          echo "Base branch: $base_branch"
+
+          run_id=$(gh run list --workflow "${WORKFLOW_BASE}" --branch "$base_branch" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+
+          if [ -z "$run_id" ]; then
+            echo "❌ No se encontró un run exitoso del workflow base en la rama '$base_branch'"
+            exit 1
+          fi
+
+          echo "⬇️ Descargando artefactos del run $run_id"
+          gh run download "$run_id" -n target-prod -D target-base
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_BASE: "dbt_base.yml" 
+
+      # --- Ejecutar dbt en la rama del PR ---
+      - name: Prepare dbt Current environment
+        run: |
+          git checkout ${{ github.event.pull_request.head.sha }}
+          dbt deps
+          dbt seed --target dev
+          dbt run --target dev
+          dbt docs generate --target dev
+
+
+      # --- Ejecutar Recce ---
+      - name: Run Recce CI
+        run: |
+          recce run --github-pull-request-url ${{ github.event.pull_request.html_url }}
+
+      # --- Subir artefactos ---
+      - name: Upload DBT Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: target
+          path: target/
+
+      - name: Upload Recce State File
+        uses: actions/upload-artifact@v4
+        id: recce-artifact-uploader
+        with:
+          name: recce-state-file
+          path: recce_state.json
