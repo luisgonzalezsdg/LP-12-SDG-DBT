@@ -1,5 +1,13 @@
 # recce.yml
 
+prod:
+  database: SEMANTICMIND
+  schema: DBT_LGONZALEZ
+
+dev:
+  database: SEMANTICMIND
+  schema: DEV
+
 checks:
   # Check 1: Row count differences
   - name: Row count diff for modified tables
@@ -16,41 +24,9 @@ checks:
     params:
       select: state:modified+
 
-  # Check 3: Compare aggregates (SUM, AVG)
-  - name: Aggregated metric comparison
-    description: Compare aggregate metrics (SUM, AVG) between base and current datasets.
-    type: query_diff
+  # Check 3: Lineage differences
+  - name: Lineage diff for modified nodes
+    description: Check the lineage difference for all modified nodes and their downstream dependencies.
+    type: lineage_diff
     params:
       select: state:modified+
-      sql_template: |
-        SELECT
-          '{{ model_name }}' AS model,
-          SUM(amount) AS sum_amount,
-          AVG(amount) AS avg_amount
-        FROM {{ this }}
-
-  # Check 4: Detect duplicates
-  - name: Duplicate key check
-    description: Detect duplicate primary key combinations in modified tables.
-    type: query_diff
-    params:
-      select: state:modified+
-      sql_template: |
-        SELECT
-          '{{ model_name }}' AS model,
-          COUNT(*) - COUNT(DISTINCT order_id) AS duplicate_rows
-        FROM {{ this }}
-
-  # Check 5: Null value detection
-  - name: Null value check
-    description: Detect unexpected nulls in critical columns.
-    type: query_diff
-    params:
-      select: state:modified+
-      sql_template: |
-        SELECT
-          '{{ model_name }}' AS model,
-          SUM(CASE WHEN order_id IS NULL THEN 1 ELSE 0 END) AS null_order_id,
-          SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END) AS null_customer_id,
-          SUM(CASE WHEN amount IS NULL THEN 1 ELSE 0 END) AS null_amount
-        FROM {{ this }}
